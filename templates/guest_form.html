@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Guest Form | BrightAdel Hostel
+{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+
+        <div class="card card-shadow">
+            <div class="card-body p-4">
+
+                <h1 class="h4 mb-4">
+                    {% if guest %}
+                        Edit {{ guest.full_name }}
+                    {% else %}
+                        New Guest
+                    {% endif %}
+                </h1>
+
+                <form method="post">
+
+                    <div class="row g-3">
+
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Full Name
+                            </label>
+
+                            <input
+                                type="text"
+                                class="form-control"
+                                name="full_name"
+                                value="{{ guest.full_name if guest else '' }}"
+                                required
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Email
+                            </label>
+
+                            <input
+                                type="email"
+                                class="form-control"
+                                name="email"
+                                value="{{ guest.email if guest else '' }}"
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                Phone
+                            </label>
+
+                            <input
+                                type="text"
+                                class="form-control"
+                                name="phone"
+                                value="{{ guest.phone if guest else '' }}"
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                ID Number
+                            </label>
+
+                            <input
+                                type="text"
+                                class="form-control"
+                                name="id_number"
+                                value="{{ guest.id_number if guest else '' }}"
+                            >
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">
+                                Notes
+                            </label>
+
+                            <textarea
+                                class="form-control"
+                                name="notes"
+                                rows="4"
+                            >{{ guest.notes if guest else '' }}</textarea>
+                        </div>
+
+                    </div>
+
+                    <div class="mt-4 d-flex gap-2">
+                        <button class="btn btn-primary">
+                            Save Guest
+                        </button>
+
+                        <a href="{{ url_for('guests') }}" class="btn btn-outline-secondary">
+                            Cancel
+                        </a>
+                    </div>
+
+                </form>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
