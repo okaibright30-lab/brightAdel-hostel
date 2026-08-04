@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Overview | BrightAdel{% endblock %}
+
+{% block content %}
+
+<h1 class="h3 mb-4">Platform Overview</h1>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-2">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Students</h2>
+                <p class="h3 mb-0">{{ stats.students }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Managers</h2>
+                <p class="h3 mb-0">{{ stats.managers }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Hostels</h2>
+                <p class="h3 mb-0">{{ stats.hostels }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Room Types</h2>
+                <p class="h3 mb-0">{{ stats.rooms }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Bookings</h2>
+                <p class="h3 mb-0">{{ stats.bookings }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Revenue</h2>
+                <p class="h4 mb-0">GH₵ {{ "%.2f"|format(revenue) }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h2 class="h5 mb-3">Recent Bookings (all hostels)</h2>
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Student</th>
+                <th>Hostel</th>
+                <th>Room Type</th>
+                <th>Paid</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for booking in recent_bookings %}
+                <tr>
+                    <td>{{ booking.student.username }}</td>
+                    <td>{{ booking.room.hostel.name }}</td>
+                    <td>{{ booking.room.room_type }}</td>
+                    <td>GH₵ {{ "%.2f"|format(booking.paid_amount()) }} / {{ "%.2f"|format(booking.total_amount) }}</td>
+                    <td><span class="badge text-bg-info">{{ booking.status }}</span></td>
+                </tr>
+            {% else %}
+                <tr><td colspan="5">No bookings yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

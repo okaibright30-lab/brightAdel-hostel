@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Receipt | BrightAdel{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+
+        <div class="card card-shadow">
+            <div class="card-body p-5">
+
+                <div class="d-flex justify-content-between align-items-start mb-4">
+                    <div>
+                        <h1 class="h3 mb-0">BrightAdel</h1>
+                        <p class="text-muted mb-0">Official Payment Receipt</p>
+                    </div>
+                    {% if booking.balance() <= 0 %}
+                        <span class="badge text-bg-success fs-6">FULLY PAID</span>
+                    {% else %}
+                        <span class="badge text-bg-warning fs-6">PARTIALLY PAID</span>
+                    {% endif %}
+                </div>
+
+                <hr>
+
+                <div class="row mb-4">
+                    <div class="col-6">
+                        <p class="mb-1 text-muted">Student</p>
+                        <p class="fw-bold">{{ booking.student.username }}</p>
+                        <p class="mb-1 text-muted">Hostel</p>
+                        <p class="fw-bold">{{ booking.room.hostel.name }} ({{ booking.room.hostel.location }})</p>
+                    </div>
+                    <div class="col-6">
+                        <p class="mb-1 text-muted">Room Type</p>
+                        <p class="fw-bold">{{ booking.room.room_type }} {% if booking.room.hostel.has_ac %} • AC included{% endif %}</p>
+                        <p class="mb-1 text-muted">Booking Status</p>
+                        <p class="fw-bold">{{ booking.status.replace('_', ' ').title() }}</p>
+                    </div>
+                </div>
+
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Payment Ref</th>
+                            <th>Date</th>
+                            <th>Method</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in booking.payments %}
+                            <tr>
+                                <td>{{ payment.reference }}</td>
+                                <td>{{ payment.paid_at.strftime("%d %b %Y") }}</td>
+                                <td>{{ payment.method }}</td>
+                                <td class="text-end">GH₵ {{ "%.2f"|format(payment.amount) }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="4">No payments yet.</td></tr>
+                        {% endfor %}
+                        <tr>
+                            <td colspan="3" class="text-end fw-bold">Total Paid</td>
+                            <td class="text-end fw-bold">GH₵ {{ "%.2f"|format(booking.paid_amount()) }}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="3" class="text-end fw-bold">Balance</td>
+                            <td class="text-end fw-bold">GH₵ {{ "%.2f"|format(booking.balance()) }}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="3" class="text-end fw-bold fs-5">Total Fee</td>
+                            <td class="text-end fw-bold fs-5">GH₵ {{ "%.2f"|format(booking.total_amount) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <p class="text-muted small mb-0">
+                    Keep this receipt as proof of payment. Present it at check-in.
+                </p>
+
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-primary" onclick="window.print()">Print Receipt</button>
+            {% if current_user.role == "student" %}
+                <a class="btn btn-outline-secondary" href="{{ url_for('my_bookings') }}">Back to My Bookings</a>
+            {% else %}
+                <a class="btn btn-outline-secondary" href="{{ url_for('admin_dashboard') }}">Back to Overview</a>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

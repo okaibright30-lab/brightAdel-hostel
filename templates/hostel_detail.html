@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}{{ hostel.name }} | BrightAdel{% endblock %}
+
+{% block content %}
+
+<div class="mb-4">
+    <a href="{{ url_for('index') }}" class="text-decoration-none">&larr; Back to hostels</a>
+    <h1 class="h3 mt-2 mb-1">{{ hostel.name }}</h1>
+    <p class="text-muted mb-1">
+        📍 {{ hostel.location }} • Managed by {{ hostel.manager.username }}
+        {% if hostel.has_ac %} • <span class="badge text-bg-info">❄️ AC included</span>{% endif %}
+    </p>
+
+    <p class="mb-0">
+        {% if hostel.paid_amenities_list %}
+            <strong>Paid separately:</strong>
+            {% for amenity in hostel.paid_amenities_list %}
+                <span class="badge text-bg-warning">{{ amenity.title() }}</span>
+            {% endfor %}
+        {% else %}
+            <span class="badge text-bg-success">Water, electricity & wifi included</span>
+        {% endif %}
+    </p>
+</div>
+
+<h2 class="h5 mb-3">Photos</h2>
+<div class="row g-3 mb-5">
+    {% for photo in photos %}
+        <div class="col-md-3">
+            <div class="card card-shadow h-100">
+                <img
+                    src="{{ url_for('static', filename='uploads/' + photo.filename) }}"
+                    class="card-img-top"
+                    alt="{{ photo.label }}"
+                    style="object-fit: cover; height: 160px;"
+                >
+                <div class="card-body py-2 text-center">
+                    <span class="badge text-bg-dark">{{ photo.label }}</span>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-info">No photos uploaded yet.</div>
+        </div>
+    {% endfor %}
+</div>
+
+<h2 class="h5 mb-3">Rooms & Slots</h2>
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Room Type</th>
+                <th>Slots Available</th>
+                <th>Price / Year</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for room in rooms %}
+                <tr>
+                    <td>{{ room.room_type }}</td>
+                    <td>{{ room.available_slots() }} / {{ room.total_slots }}</td>
+                    <td>GH₵ {{ "%.2f"|format(room.price_per_year) }}</td>
+                    <td>
+                        {% if current_user.is_authenticated and current_user.role == "student" %}
+                            {% if room.available_slots() > 0 %}
+                                <a class="btn btn-sm btn-primary" href="{{ url_for('booking_new', room_id=room.id) }}">Book a Slot</a>
+                            {% else %}
+                                <span class="badge text-bg-secondary">Full</span>
+                            {% endif %}
+                        {% elif not current_user.is_authenticated %}
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('login') }}">Login to book</a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="4">No rooms added yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

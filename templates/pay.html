@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Payment | BrightAdel{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card card-shadow">
+            <div class="card-body p-4">
+
+                <h1 class="h4 mb-4">Complete Payment</h1>
+
+                <ul class="list-group mb-4">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Hostel</span><strong>{{ booking.room.hostel.name }} ({{ booking.room.hostel.location }})</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Room Type</span><strong>{{ booking.room.room_type }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Total Fee (per year)</span><strong>GH₵ {{ "%.2f"|format(booking.total_amount) }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Already Paid</span><strong>GH₵ {{ "%.2f"|format(booking.paid_amount()) }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Balance</span><strong>GH₵ {{ "%.2f"|format(booking.balance()) }}</strong>
+                    </li>
+                </ul>
+
+                {% if booking.balance() <= 0 %}
+                    <div class="alert alert-success">
+                        Fully paid! <a href="{{ url_for('booking_receipt', booking_id=booking.id) }}">View your receipt</a>.
+                    </div>
+                {% else %}
+                    <form method="post">
+                        {% if booking.paid_amount() == 0 %}
+                            <button name="pay_option" value="half" class="btn btn-success w-100 btn-lg mb-2">
+                                Pay 50% Deposit — GH₵ {{ "%.2f"|format(booking.half_fee()) }} (confirms your slot)
+                            </button>
+                            <button name="pay_option" value="full" class="btn btn-outline-success w-100 btn-lg">
+                                Pay Full — GH₵ {{ "%.2f"|format(booking.total_amount) }}
+                            </button>
+                        {% else %}
+                            <button name="pay_option" value="balance" class="btn btn-success w-100 btn-lg">
+                                Pay Remaining Balance — GH₵ {{ "%.2f"|format(booking.balance()) }}
+                            </button>
+                        {% endif %}
+                    </form>
+
+                    <p class="text-muted text-center mt-3 mb-0">
+                        Test mode — no real money moves. Real Paystack integration comes next.
+                    </p>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

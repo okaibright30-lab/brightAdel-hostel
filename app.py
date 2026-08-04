@@ -1,5 +1,6 @@
 import os
-from datetime import datetime, date, timezone
+import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 from functools import wraps
 
@@ -22,6 +23,7 @@ from flask_login import (
     current_user,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 
 
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -31,6 +33,9 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "brightadel-dev-secret-key")
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(basedir, "brightadel.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["UPLOAD_FOLDER"] = os.path.join(basedir, "static", "uploads")
+
+os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 db = SQLAlchemy(app)
 
@@ -39,9 +44,17 @@ login_manager.login_view = "login"
 login_manager.login_message_category = "warning"
 
 
-ROOM_TYPES = ["single", "double", "twin", "dorm", "suite"]
-ROOM_STATUSES = ["available", "occupied", "maintenance", "unavailable"]
+HOSTEL_LOCATIONS = ["Ayensu", "Kwaprow", "Amamoma", "Old Site"]
+AMENITY_OPTIONS = ["water", "electricity", "wifi"]
+PHOTO_LABELS = ["Cover (Compound)", "Bathroom", "Bedroom", "Kitchen"]
+ROOM_TYPE_CAPACITY = {
+    "1 in a room": 1,
+    "2 in a room": 2,
+    "3 in a room": 3,
+    "4 in a room": 4,
+}
 BOOKING_STATUSES = ["pending", "confirmed", "checked_in", "checked_out", "cancelled"]
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 
 
 def utcnow():
@@ -59,8 +72,11 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    role = db.Column(db.String(20), nullable=False, default="student")
+    suspended = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow)
+
+    hostels = db.relationship("Hostel", backref="manager", lazy=True)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -68,64 +84,107 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-    def __repr__(self):
-        return f"<User {self.username}>"
+
+class Hostel(db.Model):
+    __tablename__ = "hostels"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    location = db.Column(db.String(50), nullable=False)
+    paid_amenities = db.Column(db.String(200), nullable=True, default="")
+    has_ac = db.Column(db.Boolean, default=False, nullable=False)
+    manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    rooms = db.relationship("Room", backref="hostel", lazy=True)
+    photos = db.relationship("HostelPhoto", backref="hostel", lazy=True)
+
+    @property
+    def paid_amenities_list(self):
+        return [a for a in (self.paid_amenities or "").split(",") if a]
+
+
+class HostelPhoto(db.Model):
+    __tablename__ = "hostel_photos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    hostel_id = db.Column(db.Integer, db.ForeignKey("hostels.id"), nullable=False)
+    label = db.Column(db.String(50), nullable=False)
+    filename = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow)
 
 
 class Room(db.Model):
     __tablename__ = "rooms"
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), nullable=False)
-    room_type = db.Column(db.String(30), nullable=False, default="single")
+    hostel_id = db.Column(db.Integer, db.ForeignKey("hostels.id"), nullable=False)
+    room_type = db.Column(db.String(30), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False, default=1)
     capacity = db.Column(db.Integer, nullable=False, default=1)
-    price = db.Column(db.Numeric(10, 2), nullable=False, default=0)
-    status = db.Column(db.String(30), nullable=False, default="available")
-    notes = db.Column(db.Text, nullable=True)
+    price_per_year = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=utcnow)
 
     bookings = db.relationship("Booking", backref="room", lazy=True)
 
-    def __repr__(self):
-        return f"<Room {self.name}>"
+    @property
+    def total_slots(self):
+        return self.quantity * self.capacity
 
+    def booked_slots(self):
+        return Booking.query.filter(
+            Booking.room_id == self.id,
+            Booking.status.in_(["confirmed", "checked_in"]),
+        ).count()
 
-class Guest(db.Model):
-    __tablename__ = "guests"
-
-    id = db.Column(db.Integer, primary_key=True)
-    full_name = db.Column(db.String(120), nullable=False)
-    email = db.Column(db.String(120), nullable=True)
-    phone = db.Column(db.String(50), nullable=True)
-    id_number = db.Column(db.String(80), nullable=True)
-    notes = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=utcnow)
-
-    bookings = db.relationship("Booking", backref="guest", lazy=True)
-
-    def __repr__(self):
-        return f"<Guest {self.full_name}>"
+    def available_slots(self):
+        return self.total_slots - self.booked_slots()
 
 
 class Booking(db.Model):
     __tablename__ = "bookings"
 
     id = db.Column(db.Integer, primary_key=True)
-    guest_id = db.Column(db.Integer, db.ForeignKey("guests.id"), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     room_id = db.Column(db.Integer, db.ForeignKey("rooms.id"), nullable=False)
-    check_in = db.Column(db.Date, nullable=False)
-    check_out = db.Column(db.Date, nullable=False)
     status = db.Column(db.String(30), nullable=False, default="pending")
     total_amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow)
 
-    def __repr__(self):
-        return f"<Booking {self.id}>"
+    student = db.relationship("User", backref="bookings")
+    payments = db.relationship("Payment", backref="booking", lazy=True)
+
+    def paid_amount(self):
+        value = db.session.query(
+            db.func.coalesce(db.func.sum(Payment.amount), 0)
+        ).filter(
+            Payment.booking_id == self.id,
+            Payment.status == "success",
+        ).scalar()
+        return Decimal(str(value))
+
+    def balance(self):
+        return Decimal(str(self.total_amount)) - self.paid_amount()
+
+    def half_fee(self):
+        return Decimal(str(self.total_amount)) / Decimal("2")
+
+
+class Payment(db.Model):
+    __tablename__ = "payments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    booking_id = db.Column(db.Integer, db.ForeignKey("bookings.id"), nullable=False)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    method = db.Column(db.String(50), nullable=False, default="paystack-test")
+    status = db.Column(db.String(20), nullable=False, default="success")
+    reference = db.Column(db.String(100), unique=True, nullable=False)
+    paid_at = db.Column(db.DateTime, default=utcnow)
 
 
 # -----------------------------
-# Flask Login Loader
+# Login loader + helpers
 # -----------------------------
 
 @login_manager.user_loader
@@ -133,58 +192,142 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
-# -----------------------------
-# Helpers
-# -----------------------------
-
-def admin_required(view):
-    @wraps(view)
-    def wrapped_view(*args, **kwargs):
-        if not current_user.is_authenticated:
-            return redirect(url_for("login", next=request.url))
-
-        if not current_user.is_admin:
-            abort(403)
-
-        return view(*args, **kwargs)
-
-    return wrapped_view
+def role_required(*roles):
+    def wrapper(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for("login", next=request.url))
+            if current_user.role not in roles:
+                abort(403)
+            return view(*args, **kwargs)
+        return wrapped
+    return wrapper
 
 
-def parse_date(value):
-    if not value:
-        return None
-
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").date()
-    except ValueError:
-        return None
+def manager_owns_hostel(hostel):
+    return current_user.role == "admin" or hostel.manager_id == current_user.id
 
 
-def is_room_available(room_id, check_in, check_out, exclude_booking_id=None):
-    active_statuses = ["pending", "confirmed", "checked_in"]
-
-    query = Booking.query.filter(
-        Booking.room_id == room_id,
-        Booking.status.in_(active_statuses),
-        Booking.check_in < check_out,
-        Booking.check_out > check_in,
-    )
-
-    if exclude_booking_id:
-        query = query.filter(Booking.id != exclude_booking_id)
-
-    return query.count() == 0
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 # -----------------------------
-# Public Pages
+# Public pages + search system
 # -----------------------------
 
 @app.route("/")
 def index():
-    rooms = Room.query.filter_by(status="available").order_by(Room.name).limit(6).all()
-    return render_template("index.html", rooms=rooms)
+    q = request.args.get("q", "").strip()
+    location = request.args.get("location", "").strip()
+    room_type = request.args.get("room_type", "").strip()
+    ac = request.args.get("ac") == "on"
+    has_slots = request.args.get("slots") == "on"
+    included_amenities = [a for a in request.args.getlist("amenities") if a in AMENITY_OPTIONS]
+    sort = request.args.get("sort", "name")
+
+    min_price = None
+    max_price = None
+    try:
+        if request.args.get("min_price"):
+            min_price = Decimal(request.args.get("min_price"))
+        if request.args.get("max_price"):
+            max_price = Decimal(request.args.get("max_price"))
+    except Exception:
+        min_price = None
+        max_price = None
+
+    query = Hostel.query
+
+    if q:
+        query = query.filter(Hostel.name.ilike(f"%{q}%"))
+
+    if location:
+        query = query.filter(Hostel.location == location)
+
+    cards = []
+    for hostel in query.all():
+        rooms = list(hostel.rooms)
+
+        # Filter by room type (capacity)
+        if room_type:
+            rooms = [r for r in rooms if r.room_type == room_type]
+            if not rooms:
+                continue
+
+        # Filter by AC
+        if ac and not hostel.has_ac:
+            continue
+
+        # Filter by amenities included in the fee
+        skip = False
+        for amenity in included_amenities:
+            if amenity in hostel.paid_amenities_list:
+                skip = True
+                break
+        if skip:
+            continue
+
+        total_slots = sum(r.total_slots for r in rooms)
+        available_slots = sum(r.available_slots() for r in rooms)
+        prices = [r.price_per_year for r in rooms]
+        cheapest = min(prices, default=None)
+
+        # Filter by availability
+        if has_slots and available_slots <= 0:
+            continue
+
+        # Filter by price range (based on cheapest room)
+        if max_price is not None and (cheapest is None or cheapest > max_price):
+            continue
+        if min_price is not None and (cheapest is None or cheapest < min_price):
+            continue
+
+        cover = HostelPhoto.query.filter_by(hostel_id=hostel.id, label="Cover (Compound)").first()
+        if not cover:
+            cover = HostelPhoto.query.filter_by(hostel_id=hostel.id).first()
+
+        cards.append({
+            "hostel": hostel,
+            "total_slots": total_slots,
+            "available_slots": available_slots,
+            "min_price": cheapest,
+            "cover": cover,
+        })
+
+    # Sorting
+    if sort == "price_asc":
+        cards.sort(key=lambda c: c["min_price"] if c["min_price"] is not None else Decimal("999999999"))
+    elif sort == "price_desc":
+        cards.sort(key=lambda c: c["min_price"] if c["min_price"] is not None else Decimal("0"), reverse=True)
+    else:
+        cards.sort(key=lambda c: c["hostel"].name)
+
+    return render_template(
+        "index.html",
+        cards=cards,
+        q=q,
+        location=location,
+        room_type=room_type,
+        ac=ac,
+        has_slots=has_slots,
+        included_amenities=included_amenities,
+        sort=sort,
+        min_price_str=request.args.get("min_price", ""),
+        max_price_str=request.args.get("max_price", ""),
+        locations=HOSTEL_LOCATIONS,
+        room_types=list(ROOM_TYPE_CAPACITY.keys()),
+        amenities=AMENITY_OPTIONS,
+    )
+
+
+@app.route("/hostels/<int:hostel_id>")
+def hostel_detail(hostel_id):
+    hostel = db.session.get(Hostel, hostel_id) or abort(404)
+    rooms = sorted(hostel.rooms, key=lambda r: r.room_type)
+    photos = hostel.photos
+    return render_template("hostel_detail.html", hostel=hostel, rooms=rooms, photos=photos)
 
 
 # -----------------------------
@@ -201,6 +344,7 @@ def register():
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
+        role = request.form.get("role", "student")
 
         error = None
 
@@ -208,6 +352,8 @@ def register():
             error = "All fields are required."
         elif password != confirm_password:
             error = "Passwords do not match."
+        elif role not in ["student", "manager"]:
+            error = "Invalid account type."
         elif User.query.filter_by(username=username).first():
             error = "Username already exists."
         elif User.query.filter_by(email=email).first():
@@ -216,18 +362,10 @@ def register():
         if error:
             flash(error, "danger")
         else:
-            first_user = User.query.count() == 0
-
-            user = User(
-                username=username,
-                email=email,
-                is_admin=first_user,
-            )
+            user = User(username=username, email=email, role=role)
             user.set_password(password)
-
             db.session.add(user)
             db.session.commit()
-
             flash("Account created successfully. You can now log in.", "success")
             return redirect(url_for("login"))
 
@@ -251,11 +389,14 @@ def login():
         ).first()
 
         if user and user.check_password(password):
-            login_user(user)
-            flash(f"Welcome back, {user.username}!", "success")
-            return redirect(url_for("dashboard"))
-
-        flash("Invalid username/email or password.", "danger")
+            if user.suspended:
+                flash("This account has been suspended. Contact support.", "danger")
+            else:
+                login_user(user)
+                flash(f"Welcome back, {user.username}!", "success")
+                return redirect(url_for("dashboard"))
+        else:
+            flash("Invalid username/email or password.", "danger")
 
     return render_template("login.html")
 
@@ -268,524 +409,565 @@ def logout():
     return redirect(url_for("index"))
 
 
-# -----------------------------
-# Dashboard
-# -----------------------------
-
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    total_rooms = Room.query.count()
-    available_rooms = Room.query.filter_by(status="available").count()
-    total_guests = Guest.query.count()
+    if current_user.role == "admin":
+        return redirect(url_for("admin_dashboard"))
+    if current_user.role == "manager":
+        return redirect(url_for("manager_dashboard"))
+    return redirect(url_for("my_bookings"))
 
-    active_bookings = Booking.query.filter(
-        Booking.status.in_(["pending", "confirmed", "checked_in"])
-    ).count()
 
-    revenue = db.session.query(
-        db.func.coalesce(db.func.sum(Booking.total_amount), 0)
-    ).filter(
-        Booking.status.in_(["confirmed", "checked_in", "checked_out"])
-    ).scalar()
+# -----------------------------
+# Student: bookings, payment, receipt, leave
+# -----------------------------
 
-    recent_bookings = Booking.query.order_by(Booking.created_at.desc()).limit(8).all()
+@app.route("/my/bookings")
+@role_required("student")
+def my_bookings():
+    bookings = Booking.query.filter_by(student_id=current_user.id).order_by(Booking.created_at.desc()).all()
+    return render_template("my_bookings.html", bookings=bookings)
+
+
+@app.route("/book/room/<int:room_id>", methods=["GET", "POST"])
+@role_required("student")
+def booking_new(room_id):
+    room = db.session.get(Room, room_id) or abort(404)
+
+    if request.method == "POST":
+        notes = request.form.get("notes", "").strip()
+
+        active = Booking.query.filter(
+            Booking.student_id == current_user.id,
+            Booking.status.in_(["pending", "confirmed", "checked_in"]),
+        ).count()
+
+        if active > 0:
+            flash("You already have an active booking. Pay, cancel or check out of it first.", "danger")
+        elif room.available_slots() <= 0:
+            flash("No slots left in this room type.", "danger")
+        else:
+            booking = Booking(
+                student_id=current_user.id,
+                room_id=room.id,
+                status="pending",
+                total_amount=room.price_per_year,
+                notes=notes,
+            )
+            db.session.add(booking)
+            db.session.commit()
+
+            flash("Booking created. Pay at least half to confirm your slot.", "success")
+            return redirect(url_for("booking_pay", booking_id=booking.id))
+
+    return render_template("booking_form.html", room=room)
+
+
+@app.route("/bookings/<int:booking_id>/pay", methods=["GET", "POST"])
+@role_required("student")
+def booking_pay(booking_id):
+    booking = db.session.get(Booking, booking_id) or abort(404)
+
+    if booking.student_id != current_user.id:
+        abort(403)
+
+    if booking.status not in ["pending", "confirmed"]:
+        flash("This booking cannot be paid.", "warning")
+        return redirect(url_for("my_bookings"))
+
+    if request.method == "POST":
+        if booking.status == "pending" and booking.room.available_slots() <= 0:
+            flash("No slots left in this room type. Payment not processed.", "danger")
+            return redirect(url_for("my_bookings"))
+
+        option = request.form.get("pay_option", "")
+        paid = booking.paid_amount()
+        balance = booking.balance()
+
+        if option == "half" and paid == 0:
+            amount = booking.half_fee()
+        elif option in ["full", "balance"]:
+            amount = balance
+        else:
+            flash("Invalid payment option.", "danger")
+            return redirect(url_for("booking_pay", booking_id=booking.id))
+
+        if amount <= 0:
+            flash("Nothing left to pay. Your booking is fully paid.", "info")
+            return redirect(url_for("booking_receipt", booking_id=booking.id))
+
+        payment = Payment(
+            booking_id=booking.id,
+            amount=amount,
+            method="paystack-test",
+            status="success",
+            reference=f"BA-{booking.id}-{int(datetime.now().timestamp())}",
+        )
+        db.session.add(payment)
+
+        if booking.status == "pending" and (paid + amount) >= booking.half_fee():
+            booking.status = "confirmed"
+
+        db.session.commit()
+
+        flash("Payment successful!", "success")
+        return redirect(url_for("booking_receipt", booking_id=booking.id))
+
+    return render_template("pay.html", booking=booking)
+
+
+@app.route("/bookings/<int:booking_id>/receipt")
+@role_required("student", "admin")
+def booking_receipt(booking_id):
+    booking = db.session.get(Booking, booking_id) or abort(404)
+
+    if current_user.role == "student" and booking.student_id != current_user.id:
+        abort(403)
+
+    return render_template("receipt.html", booking=booking)
+
+
+@app.route("/bookings/<int:booking_id>/cancel", methods=["POST"])
+@role_required("student")
+def booking_cancel(booking_id):
+    booking = db.session.get(Booking, booking_id) or abort(404)
+
+    if booking.student_id != current_user.id:
+        abort(403)
+
+    if booking.status != "pending":
+        flash("Only unpaid bookings can be cancelled.", "warning")
+    else:
+        booking.status = "cancelled"
+        db.session.commit()
+        flash("Booking cancelled.", "info")
+
+    return redirect(url_for("my_bookings"))
+
+
+@app.route("/bookings/<int:booking_id>/leave", methods=["POST"])
+@role_required("student")
+def booking_leave(booking_id):
+    booking = db.session.get(Booking, booking_id) or abort(404)
+
+    if booking.student_id != current_user.id:
+        abort(403)
+
+    if booking.status not in ["confirmed", "checked_in"]:
+        flash("You can only leave an active (paid) booking.", "warning")
+    else:
+        booking.status = "checked_out"
+        db.session.commit()
+        flash("You checked out. Your slot is free and you can book another hostel.", "success")
+
+    return redirect(url_for("my_bookings"))
+
+
+# -----------------------------
+# Manager: hostels, rooms, photos, bookings
+# -----------------------------
+
+@app.route("/manager")
+@role_required("manager", "admin")
+def manager_dashboard():
+    if current_user.role == "admin":
+        hostels = Hostel.query.all()
+    else:
+        hostels = Hostel.query.filter_by(manager_id=current_user.id).all()
+
+    total_slots = 0
+    booked_slots = 0
+    for hostel in hostels:
+        for room in hostel.rooms:
+            total_slots += room.total_slots
+            booked_slots += room.booked_slots()
+
+    bookings = []
+    for hostel in hostels:
+        for room in hostel.rooms:
+            bookings.extend(room.bookings)
+    bookings.sort(key=lambda b: b.created_at, reverse=True)
+
+    hostel_ids = [h.id for h in hostels]
+    revenue = 0
+    if hostel_ids:
+        revenue = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).select_from(Payment).join(Booking).join(Room).filter(Room.hostel_id.in_(hostel_ids), Payment.status == "success").scalar()
 
     return render_template(
-        "dashboard.html",
-        total_rooms=total_rooms,
-        available_rooms=available_rooms,
-        total_guests=total_guests,
-        active_bookings=active_bookings,
+        "manager_dashboard.html",
+        hostels=hostels,
+        total_slots=total_slots,
+        booked_slots=booked_slots,
+        bookings=bookings,
+        revenue=revenue,
+    )
+
+
+@app.route("/manager/hostels/new", methods=["GET", "POST"])
+@role_required("manager")
+def hostel_new():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        location = request.form.get("location", "")
+        paid_amenities = request.form.getlist("paid_amenities")
+        has_ac = request.form.get("has_ac") == "on"
+
+        if not name:
+            flash("Hostel name is required.", "danger")
+        elif location not in HOSTEL_LOCATIONS:
+            flash("Please choose a valid location.", "danger")
+        else:
+            hostel = Hostel(
+                name=name,
+                location=location,
+                paid_amenities=",".join([a for a in paid_amenities if a in AMENITY_OPTIONS]),
+                has_ac=has_ac,
+                manager_id=current_user.id,
+            )
+            db.session.add(hostel)
+            db.session.commit()
+            flash("Hostel created. Now add rooms and photos.", "success")
+            return redirect(url_for("hostel_edit", hostel_id=hostel.id))
+
+    return render_template(
+        "hostel_form.html",
+        hostel=None,
+        locations=HOSTEL_LOCATIONS,
+        amenities=AMENITY_OPTIONS,
+        photo_labels=PHOTO_LABELS,
+    )
+
+
+@app.route("/manager/hostels/<int:hostel_id>/edit", methods=["GET", "POST"])
+@role_required("manager")
+def hostel_edit(hostel_id):
+    hostel = db.session.get(Hostel, hostel_id) or abort(404)
+
+    if not manager_owns_hostel(hostel):
+        abort(403)
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        location = request.form.get("location", "")
+        paid_amenities = request.form.getlist("paid_amenities")
+        has_ac = request.form.get("has_ac") == "on"
+
+        if not name:
+            flash("Hostel name is required.", "danger")
+        elif location not in HOSTEL_LOCATIONS:
+            flash("Please choose a valid location.", "danger")
+        else:
+            hostel.name = name
+            hostel.location = location
+            hostel.paid_amenities = ",".join([a for a in paid_amenities if a in AMENITY_OPTIONS])
+            hostel.has_ac = has_ac
+            db.session.commit()
+            flash("Hostel updated successfully.", "success")
+            return redirect(url_for("manager_dashboard"))
+
+    return render_template(
+        "hostel_form.html",
+        hostel=hostel,
+        locations=HOSTEL_LOCATIONS,
+        amenities=AMENITY_OPTIONS,
+        photo_labels=PHOTO_LABELS,
+    )
+
+
+@app.route("/manager/hostels/<int:hostel_id>/photos", methods=["POST"])
+@role_required("manager")
+def hostel_photo_upload(hostel_id):
+    hostel = db.session.get(Hostel, hostel_id) or abort(404)
+
+    if not manager_owns_hostel(hostel):
+        abort(403)
+
+    label = request.form.get("label", "")
+    file = request.files.get("photo")
+
+    if label not in PHOTO_LABELS:
+        flash("Please choose a photo label.", "danger")
+    elif not file or file.filename == "":
+        flash("Please choose an image file.", "danger")
+    elif not allowed_file(file.filename):
+        flash("Only JPG, PNG or WEBP images are allowed.", "danger")
+    else:
+        filename = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
+        file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+
+        photo = HostelPhoto(hostel_id=hostel.id, label=label, filename=filename)
+        db.session.add(photo)
+        db.session.commit()
+        flash("Photo uploaded and framed.", "success")
+
+    return redirect(url_for("hostel_edit", hostel_id=hostel.id))
+
+
+@app.route("/manager/photos/<int:photo_id>/delete", methods=["POST"])
+@role_required("manager")
+def hostel_photo_delete(photo_id):
+    photo = db.session.get(HostelPhoto, photo_id) or abort(404)
+
+    if not manager_owns_hostel(photo.hostel):
+        abort(403)
+
+    path = os.path.join(app.config["UPLOAD_FOLDER"], photo.filename)
+    if os.path.exists(path):
+        os.remove(path)
+
+    hostel_id = photo.hostel_id
+    db.session.delete(photo)
+    db.session.commit()
+    flash("Photo deleted.", "success")
+    return redirect(url_for("hostel_edit", hostel_id=hostel_id))
+
+
+@app.route("/manager/rooms/new", methods=["GET", "POST"])
+@role_required("manager")
+def room_new():
+    my_hostels = Hostel.query.filter_by(manager_id=current_user.id).all()
+
+    if request.method == "POST":
+        hostel_id = request.form.get("hostel_id", type=int)
+        room_type = request.form.get("room_type", "")
+        quantity = request.form.get("quantity", type=int) or 1
+        price = request.form.get("price", type=float) or 0
+
+        hostel = db.session.get(Hostel, hostel_id) if hostel_id else None
+
+        if not hostel or not manager_owns_hostel(hostel):
+            flash("Please select one of your hostels.", "danger")
+        elif room_type not in ROOM_TYPE_CAPACITY:
+            flash("Please choose a valid room type.", "danger")
+        elif quantity < 1:
+            flash("Quantity must be at least 1.", "danger")
+        elif price < 0:
+            flash("Price cannot be negative.", "danger")
+        else:
+            room = Room(
+                hostel_id=hostel.id,
+                room_type=room_type,
+                quantity=quantity,
+                capacity=ROOM_TYPE_CAPACITY[room_type],
+                price_per_year=Decimal(str(price)),
+            )
+            db.session.add(room)
+            db.session.commit()
+            flash(f"Room added: {quantity} x {room_type} = {quantity * ROOM_TYPE_CAPACITY[room_type]} slots.", "success")
+            return redirect(url_for("manager_dashboard"))
+
+    return render_template(
+        "room_form.html",
+        room=None,
+        hostels=my_hostels,
+        room_types=ROOM_TYPE_CAPACITY,
+    )
+
+
+@app.route("/manager/rooms/<int:room_id>/edit", methods=["GET", "POST"])
+@role_required("manager")
+def room_edit(room_id):
+    room = db.session.get(Room, room_id) or abort(404)
+
+    if not manager_owns_hostel(room.hostel):
+        abort(403)
+
+    my_hostels = Hostel.query.filter_by(manager_id=current_user.id).all()
+
+    if request.method == "POST":
+        room_type = request.form.get("room_type", "")
+        quantity = request.form.get("quantity", type=int) or 1
+        price = request.form.get("price", type=float) or 0
+
+        if room_type not in ROOM_TYPE_CAPACITY:
+            flash("Please choose a valid room type.", "danger")
+        elif quantity < 1:
+            flash("Quantity must be at least 1.", "danger")
+        elif price < 0:
+            flash("Price cannot be negative.", "danger")
+        else:
+            room.room_type = room_type
+            room.quantity = quantity
+            room.capacity = ROOM_TYPE_CAPACITY[room_type]
+            room.price_per_year = Decimal(str(price))
+            db.session.commit()
+            flash("Room updated successfully.", "success")
+            return redirect(url_for("manager_dashboard"))
+
+    return render_template(
+        "room_form.html",
+        room=room,
+        hostels=my_hostels,
+        room_types=ROOM_TYPE_CAPACITY,
+    )
+
+
+@app.route("/manager/bookings/<int:booking_id>/checkin", methods=["POST"])
+@role_required("manager", "admin")
+def booking_checkin(booking_id):
+    booking = db.session.get(Booking, booking_id) or abort(404)
+
+    if not manager_owns_hostel(booking.room.hostel):
+        abort(403)
+
+    if booking.status != "confirmed":
+        flash("Only confirmed (paid) bookings can be checked in.", "warning")
+    else:
+        booking.status = "checked_in"
+        db.session.commit()
+        flash(f"{booking.student.username} checked in.", "success")
+
+    return redirect(request.referrer or url_for("manager_dashboard"))
+
+
+@app.route("/manager/bookings/<int:booking_id>/checkout", methods=["POST"])
+@role_required("manager", "admin")
+def booking_checkout(booking_id):
+    booking = db.session.get(Booking, booking_id) or abort(404)
+
+    if not manager_owns_hostel(booking.room.hostel):
+        abort(403)
+
+    if booking.status != "checked_in":
+        flash("Only checked-in bookings can be checked out.", "warning")
+    else:
+        booking.status = "checked_out"
+        db.session.commit()
+        flash(f"{booking.student.username} checked out.", "success")
+
+    return redirect(request.referrer or url_for("manager_dashboard"))
+
+
+# -----------------------------
+# Admin: oversight
+# -----------------------------
+
+@app.route("/admin")
+@role_required("admin")
+def admin_dashboard():
+    stats = {
+        "students": User.query.filter_by(role="student").count(),
+        "managers": User.query.filter_by(role="manager").count(),
+        "hostels": Hostel.query.count(),
+        "rooms": Room.query.count(),
+        "bookings": Booking.query.count(),
+    }
+
+    revenue = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).filter(Payment.status == "success").scalar()
+
+    recent_bookings = Booking.query.order_by(Booking.created_at.desc()).limit(10).all()
+
+    return render_template(
+        "admin_dashboard.html",
+        stats=stats,
         revenue=revenue,
         recent_bookings=recent_bookings,
     )
 
 
-# -----------------------------
-# Room Management
-# -----------------------------
-
-@app.route("/rooms")
-@login_required
-def rooms():
-    q = request.args.get("q", "").strip()
-    status = request.args.get("status", "").strip()
-
-    query = Room.query
-
-    if q:
-        query = query.filter(
-            db.or_(
-                Room.name.ilike(f"%{q}%"),
-                Room.room_type.ilike(f"%{q}%"),
-            )
-        )
-
-    if status:
-        query = query.filter(Room.status == status)
-
-    room_list = query.order_by(Room.name).all()
-
-    return render_template(
-        "rooms.html",
-        rooms=room_list,
-        q=q,
-        status=status,
-        room_statuses=ROOM_STATUSES,
-    )
+@app.route("/admin/users")
+@role_required("admin")
+def admin_users():
+    users = User.query.order_by(User.created_at).all()
+    return render_template("admin_users.html", users=users)
 
 
-@app.route("/rooms/new", methods=["GET", "POST"])
-@admin_required
-def room_new():
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        room_type = request.form.get("room_type", "single")
-        capacity = request.form.get("capacity", type=int) or 1
-        price = request.form.get("price", type=float) or 0
-        status = request.form.get("status", "available")
-        notes = request.form.get("notes", "").strip()
+@app.route("/admin/users/<int:user_id>/suspend", methods=["POST"])
+@role_required("admin")
+def admin_user_suspend(user_id):
+    user = db.session.get(User, user_id) or abort(404)
 
-        if not name:
-            flash("Room name is required.", "danger")
-        elif capacity < 1:
-            flash("Capacity must be at least 1.", "danger")
-        elif price < 0:
-            flash("Price cannot be negative.", "danger")
-        elif room_type not in ROOM_TYPES:
-            flash("Invalid room type.", "danger")
-        elif status not in ROOM_STATUSES:
-            flash("Invalid room status.", "danger")
-        else:
-            room = Room(
-                name=name,
-                room_type=room_type,
-                capacity=capacity,
-                price=Decimal(str(price)),
-                status=status,
-                notes=notes,
-            )
-
-            db.session.add(room)
-            db.session.commit()
-
-            flash("Room created successfully.", "success")
-            return redirect(url_for("rooms"))
-
-    return render_template(
-        "room_form.html",
-        room=None,
-        room_types=ROOM_TYPES,
-        room_statuses=ROOM_STATUSES,
-    )
-
-
-@app.route("/rooms/<int:room_id>/edit", methods=["GET", "POST"])
-@admin_required
-def room_edit(room_id):
-    room = db.session.get(Room, room_id) or abort(404)
-
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        room_type = request.form.get("room_type", "single")
-        capacity = request.form.get("capacity", type=int) or 1
-        price = request.form.get("price", type=float) or 0
-        status = request.form.get("status", "available")
-        notes = request.form.get("notes", "").strip()
-
-        if not name:
-            flash("Room name is required.", "danger")
-        elif capacity < 1:
-            flash("Capacity must be at least 1.", "danger")
-        elif price < 0:
-            flash("Price cannot be negative.", "danger")
-        elif room_type not in ROOM_TYPES:
-            flash("Invalid room type.", "danger")
-        elif status not in ROOM_STATUSES:
-            flash("Invalid room status.", "danger")
-        else:
-            room.name = name
-            room.room_type = room_type
-            room.capacity = capacity
-            room.price = Decimal(str(price))
-            room.status = status
-            room.notes = notes
-
-            db.session.commit()
-
-            flash("Room updated successfully.", "success")
-            return redirect(url_for("rooms"))
-
-    return render_template(
-        "room_form.html",
-        room=room,
-        room_types=ROOM_TYPES,
-        room_statuses=ROOM_STATUSES,
-    )
-
-
-@app.route("/rooms/<int:room_id>/delete", methods=["POST"])
-@admin_required
-def room_delete(room_id):
-    room = db.session.get(Room, room_id) or abort(404)
-
-    booking_count = Booking.query.filter_by(room_id=room.id).count()
-
-    if booking_count > 0:
-        flash(
-            "This room has bookings. Mark it as unavailable instead of deleting it.",
-            "warning",
-        )
+    if user.id == current_user.id:
+        flash("You cannot suspend your own account.", "warning")
     else:
-        db.session.delete(room)
+        user.suspended = not user.suspended
         db.session.commit()
-        flash("Room deleted successfully.", "success")
+        action = "suspended" if user.suspended else "reactivated"
+        flash(f"{user.username} has been {action}.", "success")
 
-    return redirect(url_for("rooms"))
-
-
-# -----------------------------
-# Guest Management
-# -----------------------------
-
-@app.route("/guests")
-@login_required
-def guests():
-    q = request.args.get("q", "").strip()
-
-    query = Guest.query
-
-    if q:
-        query = query.filter(
-            db.or_(
-                Guest.full_name.ilike(f"%{q}%"),
-                Guest.email.ilike(f"%{q}%"),
-                Guest.phone.ilike(f"%{q}%"),
-                Guest.id_number.ilike(f"%{q}%"),
-            )
-        )
-
-    guest_list = query.order_by(Guest.full_name).all()
-
-    return render_template(
-        "guests.html",
-        guests=guest_list,
-        q=q,
-    )
+    return redirect(url_for("admin_users"))
 
 
-@app.route("/guests/new", methods=["GET", "POST"])
-@admin_required
-def guest_new():
-    if request.method == "POST":
-        full_name = request.form.get("full_name", "").strip()
-        email = request.form.get("email", "").strip()
-        phone = request.form.get("phone", "").strip()
-        id_number = request.form.get("id_number", "").strip()
-        notes = request.form.get("notes", "").strip()
+@app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+@role_required("admin")
+def admin_user_delete(user_id):
+    user = db.session.get(User, user_id) or abort(404)
 
-        if not full_name:
-            flash("Guest full name is required.", "danger")
-        else:
-            guest = Guest(
-                full_name=full_name,
-                email=email,
-                phone=phone,
-                id_number=id_number,
-                notes=notes,
-            )
-
-            db.session.add(guest)
-            db.session.commit()
-
-            flash("Guest created successfully.", "success")
-            return redirect(url_for("guests"))
-
-    return render_template("guest_form.html", guest=None)
-
-
-@app.route("/guests/<int:guest_id>/edit", methods=["GET", "POST"])
-@admin_required
-def guest_edit(guest_id):
-    guest = db.session.get(Guest, guest_id) or abort(404)
-
-    if request.method == "POST":
-        full_name = request.form.get("full_name", "").strip()
-        email = request.form.get("email", "").strip()
-        phone = request.form.get("phone", "").strip()
-        id_number = request.form.get("id_number", "").strip()
-        notes = request.form.get("notes", "").strip()
-
-        if not full_name:
-            flash("Guest full name is required.", "danger")
-        else:
-            guest.full_name = full_name
-            guest.email = email
-            guest.phone = phone
-            guest.id_number = id_number
-            guest.notes = notes
-
-            db.session.commit()
-
-            flash("Guest updated successfully.", "success")
-            return redirect(url_for("guests"))
-
-    return render_template("guest_form.html", guest=guest)
-
-
-@app.route("/guests/<int:guest_id>/delete", methods=["POST"])
-@admin_required
-def guest_delete(guest_id):
-    guest = db.session.get(Guest, guest_id) or abort(404)
-
-    booking_count = Booking.query.filter_by(guest_id=guest.id).count()
-
-    if booking_count > 0:
-        flash("This guest has booking history and cannot be deleted.", "warning")
+    if user.id == current_user.id:
+        flash("You cannot delete your own account.", "warning")
+    elif user.role == "manager" and Hostel.query.filter_by(manager_id=user.id).count() > 0:
+        flash("This manager owns hostels. Remove their hostels first.", "warning")
+    elif Booking.query.filter_by(student_id=user.id).count() > 0:
+        flash("This student has bookings. Remove their bookings first.", "warning")
     else:
-        db.session.delete(guest)
+        db.session.delete(user)
         db.session.commit()
-        flash("Guest deleted successfully.", "success")
+        flash(f"{user.username} has been deleted.", "success")
 
-    return redirect(url_for("guests"))
-
-
-# -----------------------------
-# Booking Management
-# -----------------------------
-
-@app.route("/bookings")
-@login_required
-def bookings():
-    status = request.args.get("status", "").strip()
-
-    query = Booking.query
-
-    if status:
-        query = query.filter(Booking.status == status)
-
-    booking_list = query.order_by(Booking.created_at.desc()).all()
-
-    return render_template(
-        "bookings.html",
-        bookings=booking_list,
-        status=status,
-        booking_statuses=BOOKING_STATUSES,
-    )
-
-
-@app.route("/bookings/new", methods=["GET", "POST"])
-@login_required
-def booking_new():
-    guests = Guest.query.order_by(Guest.full_name).all()
-    rooms = Room.query.order_by(Room.name).all()
-
-    if request.method == "POST":
-        guest_id = request.form.get("guest_id", type=int)
-        room_id = request.form.get("room_id", type=int)
-        check_in = parse_date(request.form.get("check_in"))
-        check_out = parse_date(request.form.get("check_out"))
-        status = request.form.get("status", "pending")
-        notes = request.form.get("notes", "").strip()
-
-        guest = db.session.get(Guest, guest_id) if guest_id else None
-        room = db.session.get(Room, room_id) if room_id else None
-
-        if not guest or not room:
-            flash("Please select both a guest and a room.", "danger")
-        elif not check_in or not check_out:
-            flash("Please provide valid check-in and check-out dates.", "danger")
-        elif check_out <= check_in:
-            flash("Check-out date must be after check-in date.", "danger")
-        elif room.status == "unavailable":
-            flash("This room is currently unavailable.", "danger")
-        elif status not in BOOKING_STATUSES:
-            flash("Invalid booking status.", "danger")
-        elif not is_room_available(room.id, check_in, check_out):
-            flash("This room is already booked for the selected dates.", "danger")
-        else:
-            nights = (check_out - check_in).days
-            total_amount = Decimal(str(nights)) * room.price
-
-            booking = Booking(
-                guest_id=guest.id,
-                room_id=room.id,
-                check_in=check_in,
-                check_out=check_out,
-                status=status,
-                total_amount=total_amount,
-                notes=notes,
-            )
-
-            db.session.add(booking)
-            db.session.commit()
-
-            flash("Booking created successfully.", "success")
-            return redirect(url_for("bookings"))
-
-    return render_template(
-        "booking_form.html",
-        booking=None,
-        guests=guests,
-        rooms=rooms,
-        booking_statuses=BOOKING_STATUSES,
-    )
-
-
-@app.route("/bookings/<int:booking_id>/edit", methods=["GET", "POST"])
-@login_required
-def booking_edit(booking_id):
-    booking = db.session.get(Booking, booking_id) or abort(404)
-
-    guests = Guest.query.order_by(Guest.full_name).all()
-    rooms = Room.query.order_by(Room.name).all()
-
-    if request.method == "POST":
-        guest_id = request.form.get("guest_id", type=int)
-        room_id = request.form.get("room_id", type=int)
-        check_in = parse_date(request.form.get("check_in"))
-        check_out = parse_date(request.form.get("check_out"))
-        status = request.form.get("status", "pending")
-        notes = request.form.get("notes", "").strip()
-
-        guest = db.session.get(Guest, guest_id) if guest_id else None
-        room = db.session.get(Room, room_id) if room_id else None
-
-        if not guest or not room:
-            flash("Please select both a guest and a room.", "danger")
-        elif not check_in or not check_out:
-            flash("Please provide valid check-in and check-out dates.", "danger")
-        elif check_out <= check_in:
-            flash("Check-out date must be after check-in date.", "danger")
-        elif room.status == "unavailable":
-            flash("This room is currently unavailable.", "danger")
-        elif status not in BOOKING_STATUSES:
-            flash("Invalid booking status.", "danger")
-        elif not is_room_available(room.id, check_in, check_out, exclude_booking_id=booking.id):
-            flash("This room is already booked for the selected dates.", "danger")
-        else:
-            nights = (check_out - check_in).days
-            total_amount = Decimal(str(nights)) * room.price
-
-            booking.guest_id = guest.id
-            booking.room_id = room.id
-            booking.check_in = check_in
-            booking.check_out = check_out
-            booking.status = status
-            booking.total_amount = total_amount
-            booking.notes = notes
-
-            db.session.commit()
-
-            flash("Booking updated successfully.", "success")
-            return redirect(url_for("bookings"))
-
-    return render_template(
-        "booking_form.html",
-        booking=booking,
-        guests=guests,
-        rooms=rooms,
-        booking_statuses=BOOKING_STATUSES,
-    )
-
-
-@app.route("/bookings/<int:booking_id>/delete", methods=["POST"])
-@login_required
-def booking_delete(booking_id):
-    booking = db.session.get(Booking, booking_id) or abort(404)
-
-    db.session.delete(booking)
-    db.session.commit()
-
-    flash("Booking deleted successfully.", "success")
-    return redirect(url_for("bookings"))
+    return redirect(url_for("admin_users"))
 
 
 # -----------------------------
-# Database Seeding
+# Seed data
 # -----------------------------
 
 @app.cli.command("seed")
 def seed_db():
     db.create_all()
 
-    admin = User.query.filter_by(username="admin").first()
-
-    if not admin:
-        admin = User(
-            username="admin",
-            email="admin@brightadel.com",
-            is_admin=True,
-        )
+    if User.query.count() == 0:
+        admin = User(username="admin", email="admin@brightadel.com", role="admin")
         admin.set_password("admin123")
-        db.session.add(admin)
 
-    if Room.query.count() == 0:
-        room_one = Room(
-            name="Room 101",
-            room_type="single",
-            capacity=1,
-            price=Decimal("25.00"),
-            status="available",
-            notes="Standard single room.",
+        manager = User(username="manager", email="manager@brightadel.com", role="manager")
+        manager.set_password("manager123")
+
+        student = User(username="student", email="student@brightadel.com", role="student")
+        student.set_password("student123")
+
+        db.session.add_all([admin, manager, student])
+        db.session.flush()
+
+        hostel = Hostel(
+            name="BrightAdel Hostel",
+            location="Ayensu",
+            paid_amenities="water,electricity",
+            has_ac=True,
+            manager_id=manager.id,
         )
+        db.session.add(hostel)
+        db.session.flush()
 
-        room_two = Room(
-            name="Room 102",
-            room_type="double",
-            capacity=2,
-            price=Decimal("40.00"),
-            status="available",
-            notes="Comfortable double room.",
-        )
-
-        room_three = Room(
-            name="Dorm A",
-            room_type="dorm",
-            capacity=6,
-            price=Decimal("12.00"),
-            status="available",
-            notes="Shared dormitory.",
-        )
-
+        room_one = Room(hostel_id=hostel.id, room_type="1 in a room", quantity=2, capacity=1, price_per_year=Decimal("4500.00"))
+        room_two = Room(hostel_id=hostel.id, room_type="2 in a room", quantity=3, capacity=2, price_per_year=Decimal("3000.00"))
+        room_three = Room(hostel_id=hostel.id, room_type="4 in a room", quantity=2, capacity=4, price_per_year=Decimal("2000.00"))
         db.session.add_all([room_one, room_two, room_three])
         db.session.flush()
 
-        guest = Guest(
-            full_name="Amina Yusuf",
-            email="amina@example.com",
-            phone="+234 800 000 0001",
-            id_number="ID-001",
-            notes="First seeded guest.",
+        booking = Booking(
+            student_id=student.id,
+            room_id=room_two.id,
+            status="confirmed",
+            total_amount=room_two.price_per_year,
         )
-
-        db.session.add(guest)
+        db.session.add(booking)
         db.session.flush()
 
-        booking = Booking(
-            guest_id=guest.id,
-            room_id=room_one.id,
-            check_in=date(2026, 8, 10),
-            check_out=date(2026, 8, 12),
-            status="confirmed",
-            total_amount=Decimal("50.00"),
-            notes="Sample booking.",
+        payment = Payment(
+            booking_id=booking.id,
+            amount=Decimal("1500.00"),
+            reference="BA-SEED-0001",
         )
+        db.session.add(payment)
 
-        db.session.add(booking)
+        db.session.commit()
 
-    db.session.commit()
+        print("Database seeded successfully.")
+        print("admin / admin123   (overseer)")
+        print("manager / manager123   (adds hostels & rooms)")
+        print("student / student123   (books & pays)")
 
-    print("Database seeded successfully.")
-    print("Admin login:")
-    print("Username: admin")
-    print("Password: admin123")
-
-
-# -----------------------------
-# Create Database Tables
-# -----------------------------
 
 with app.app_context():
     db.create_all()

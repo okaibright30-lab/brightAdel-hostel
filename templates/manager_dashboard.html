@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Manager Desk | BrightAdel{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Manager Desk</h1>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary" href="{{ url_for('hostel_new') }}">New Hostel</a>
+        <a class="btn btn-primary" href="{{ url_for('room_new') }}">Add Rooms</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">My Hostels</h2>
+                <p class="h3 mb-0">{{ hostels|length }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Total Slots</h2>
+                <p class="h3 mb-0">{{ total_slots }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Slots Booked</h2>
+                <p class="h3 mb-0">{{ booked_slots }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Revenue</h2>
+                <p class="h3 mb-0">GH₵ {{ "%.2f"|format(revenue) }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h2 class="h5 mb-3">My Hostels</h2>
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Location</th>
+                <th>AC</th>
+                <th>Rooms</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for hostel in hostels %}
+                <tr>
+                    <td>{{ hostel.name }}</td>
+                    <td>{{ hostel.location }}</td>
+                    <td>{% if hostel.has_ac %}❄️{% else %}—{% endif %}</td>
+                    <td>{{ hostel.rooms|length }}</td>
+                    <td>
+                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('hostel_edit', hostel_id=hostel.id) }}">Edit / Photos</a>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="5">You have no hostels yet. Click “New Hostel” to add one.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2 class="h5 mb-3 mt-4">Bookings in My Hostels</h2>
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Student</th>
+                <th>Hostel</th>
+                <th>Room Type</th>
+                <th>Paid</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for booking in bookings %}
+                <tr>
+                    <td>{{ booking.student.username }}</td>
+                    <td>{{ booking.room.hostel.name }}</td>
+                    <td>{{ booking.room.room_type }}</td>
+                    <td>GH₵ {{ "%.2f"|format(booking.paid_amount()) }} / {{ "%.2f"|format(booking.total_amount) }}</td>
+                    <td>
+                        {% if booking.status == "confirmed" %}
+                            <span class="badge text-bg-success">confirmed</span>
+                        {% elif booking.status == "pending" %}
+                            <span class="badge text-bg-warning">pending</span>
+                        {% elif booking.status == "checked_in" %}
+                            <span class="badge text-bg-primary">checked in</span>
+                        {% elif booking.status == "cancelled" %}
+                            <span class="badge text-bg-secondary">cancelled</span>
+                        {% else %}
+                            <span class="badge text-bg-dark">checked out</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            {% if booking.status == "confirmed" %}
+                                <form method="post" action="{{ url_for('booking_checkin', booking_id=booking.id) }}">
+                                    <button class="btn btn-sm btn-success">Check In</button>
+                                </form>
+                            {% elif booking.status == "checked_in" %}
+                                <form method="post" action="{{ url_for('booking_checkout', booking_id=booking.id) }}">
+                                    <button class="btn btn-sm btn-outline-dark">Check Out</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="6">No bookings yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

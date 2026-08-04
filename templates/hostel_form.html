@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Hostel Form | BrightAdel{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card card-shadow">
+            <div class="card-body p-4">
+
+                <h1 class="h4 mb-4">
+                    {% if hostel %}Edit {{ hostel.name }}{% else %}Add a Hostel{% endif %}
+                </h1>
+
+                <form method="post">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Hostel Name</label>
+                            <input type="text" class="form-control" name="name" value="{{ hostel.name if hostel else '' }}" required>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Location</label>
+                            <select class="form-select" name="location" required>
+                                <option value="">Select location</option>
+                                {% for loc in locations %}
+                                    <option value="{{ loc }}" {% if hostel and hostel.location == loc %}selected{% endif %}>{{ loc }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-8">
+                            <label class="form-label">Amenities students pay separately</label>
+                            <div class="border rounded p-2">
+                                {% for amenity in amenities %}
+                                    <div class="form-check form-check-inline">
+                                        <input
+                                            class="form-check-input"
+                                            type="checkbox"
+                                            name="paid_amenities"
+                                            id="am_{{ amenity }}"
+                                            value="{{ amenity }}"
+                                            {% if hostel and amenity in hostel.paid_amenities_list %}checked{% endif %}
+                                        >
+                                        <label class="form-check-label" for="am_{{ amenity }}">{{ amenity.title() }}</label>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            <div class="form-text">Unchecked = included in the hostel fee.</div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Air Conditioning</label>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" name="has_ac" id="has_ac" {% if hostel and hostel.has_ac %}checked{% endif %}>
+                                <label class="form-check-label" for="has_ac">Hostel has AC (included in fee)</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 d-flex gap-2">
+                        <button class="btn btn-primary">Save Hostel</button>
+                        <a class="btn btn-outline-secondary" href="{{ url_for('manager_dashboard') }}">Cancel</a>
+                    </div>
+                </form>
+
+                {% if hostel %}
+                    <hr class="my-4">
+
+                    <h2 class="h5 mb-3">Hostel Photos</h2>
+
+                    <form method="post" action="{{ url_for('hostel_photo_upload', hostel_id=hostel.id) }}" enctype="multipart/form-data" class="row g-2 mb-4">
+                        <div class="col-md-4">
+                            <select class="form-select" name="label" required>
+                                <option value="">Choose label</option>
+                                {% for label in photo_labels %}
+                                    <option value="{{ label }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <input type="file" class="form-control" name="photo" accept="image/*" required>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-outline-primary w-100">Upload</button>
+                        </div>
+                    </form>
+
+                    <div class="row g-3">
+                        {% for photo in hostel.photos %}
+                            <div class="col-md-3">
+                                <div class="card card-shadow h-100">
+                                    <img
+                                        src="{{ url_for('static', filename='uploads/' + photo.filename) }}"
+                                        class="card-img-top"
+                                        alt="{{ photo.label }}"
+                                        style="object-fit: cover; height: 140px;"
+                                    >
+                                    <div class="card-body py-2 text-center">
+                                        <span class="badge text-bg-dark mb-2">{{ photo.label }}</span>
+                                        <form method="post" action="{{ url_for('hostel_photo_delete', photo_id=photo.id) }}">
+                                            <button class="btn btn-sm btn-outline-danger w-100">Remove</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="col-12">
+                                <div class="alert alert-info mb-0">No photos yet. Upload cover (compound), bathroom, bedroom and kitchen photos.</div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

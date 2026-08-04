@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}My Bookings | BrightAdel{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">My Bookings</h1>
+    <a href="{{ url_for('index') }}" class="btn btn-primary">Browse Hostels</a>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Hostel</th>
+                <th>Room Type</th>
+                <th>Total</th>
+                <th>Paid</th>
+                <th>Balance</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for booking in bookings %}
+                <tr>
+                    <td>{{ booking.room.hostel.name }} ({{ booking.room.hostel.location }})</td>
+                    <td>{{ booking.room.room_type }}</td>
+                    <td>GH₵ {{ "%.2f"|format(booking.total_amount) }}</td>
+                    <td>GH₵ {{ "%.2f"|format(booking.paid_amount()) }}</td>
+                    <td>GH₵ {{ "%.2f"|format(booking.balance()) }}</td>
+                    <td>
+                        {% if booking.status == "confirmed" %}
+                            <span class="badge text-bg-success">confirmed</span>
+                        {% elif booking.status == "pending" %}
+                            <span class="badge text-bg-warning">pending</span>
+                        {% elif booking.status == "checked_in" %}
+                            <span class="badge text-bg-primary">checked in</span>
+                        {% elif booking.status == "cancelled" %}
+                            <span class="badge text-bg-secondary">cancelled</span>
+                        {% else %}
+                            <span class="badge text-bg-dark">checked out</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            {% if booking.status == "pending" %}
+                                <a class="btn btn-sm btn-success" href="{{ url_for('booking_pay', booking_id=booking.id) }}">Pay Now</a>
+                                <form method="post" action="{{ url_for('booking_cancel', booking_id=booking.id) }}" onsubmit="return confirm('Cancel this booking?');">
+                                    <button class="btn btn-sm btn-outline-danger">Cancel</button>
+                                </form>
+                            {% elif booking.status in ["confirmed", "checked_in"] %}
+                                {% if booking.balance() > 0 %}
+                                    <a class="btn btn-sm btn-success" href="{{ url_for('booking_pay', booking_id=booking.id) }}">Pay Balance</a>
+                                {% endif %}
+                                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('booking_receipt', booking_id=booking.id) }}">Receipt</a>
+                                <form method="post" action="{{ url_for('booking_leave', booking_id=booking.id) }}" onsubmit="return confirm('Check out and leave this hostel? Your slot will be freed.');">
+                                    <button class="btn btn-sm btn-outline-dark">Leave Hostel</button>
+                                </form>
+                            {% else %}
+                                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('booking_receipt', booking_id=booking.id) }}">Receipt</a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="7">
+                        You have no bookings yet. <a href="{{ url_for('index') }}">Browse hostels</a> to get started.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

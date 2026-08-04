@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Users | BrightAdel{% endblock %}
+
+{% block content %}
+
+<h1 class="h3 mb-4">All Users</h1>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Joined</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+                <tr>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>
+                        <span class="badge text-bg-{% if user.role == 'admin' %}danger{% elif user.role == 'manager' %}info{% else %}success{% endif %}">
+                            {{ user.role }}
+                        </span>
+                    </td>
+                    <td>{{ user.created_at.strftime("%d %b %Y") }}</td>
+                    <td>
+                        {% if user.suspended %}
+                            <span class="badge text-bg-danger">suspended</span>
+                        {% else %}
+                            <span class="badge text-bg-success">active</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if user.id != current_user.id %}
+                            <div class="d-flex gap-2">
+                                <form method="post" action="{{ url_for('admin_user_suspend', user_id=user.id) }}">
+                                    {% if user.suspended %}
+                                        <button class="btn btn-sm btn-outline-success">Reactivate</button>
+                                    {% else %}
+                                        <button class="btn btn-sm btn-outline-warning">Suspend</button>
+                                    {% endif %}
+                                </form>
+                                <form method="post" action="{{ url_for('admin_user_delete', user_id=user.id) }}" onsubmit="return confirm('Delete {{ user.username }} permanently?');">
+                                    <button class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </div>
+                        {% else %}
+                            <span class="text-muted">you</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

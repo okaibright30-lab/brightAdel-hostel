@@ -1,108 +1,167 @@
 {% extends "base.html" %}
 
-{% block title %}
-    BrightAdel Hostel | Home
-{% endblock %}
+{% block title %}BrightAdel | Find a Hostel{% endblock %}
 
 {% block content %}
 
-<section class="hero rounded-4 p-5 mb-5">
-    <div class="row align-items-center">
-        <div class="col-lg-8">
-            <h1 class="display-5 fw-bold">
-                BrightAdel Hostel
-            </h1>
-
-            <p class="lead">
-                Clean rooms, friendly service, and simple booking management.
-            </p>
-
-            <div class="d-flex gap-2 mt-3">
-                <a href="{{ url_for('register') }}" class="btn btn-light btn-lg">
-                    Create Account
-                </a>
-
-                <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">
-                    Staff Login
-                </a>
-            </div>
-        </div>
-    </div>
+<section class="hero rounded-4 p-5 mb-4">
+    <h1 class="display-5 fw-bold">Find your perfect student hostel</h1>
+    <p class="lead">
+        Search hostels in Ayensu, Kwaprow, Amamoma and Old Site.
+        Book a slot, pay online in cedis and get your receipt instantly.
+    </p>
 </section>
 
 
-<div class="row g-4 mb-5">
-    <div class="col-md-4">
-        <div class="card card-shadow h-100">
-            <div class="card-body">
-                <h2 class="h5">Rooms</h2>
-                <p>
-                    Manage room types, prices, capacity, and availability.
-                </p>
-            </div>
-        </div>
-    </div>
+<div class="card card-shadow mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3">
 
-    <div class="col-md-4">
-        <div class="card card-shadow h-100">
-            <div class="card-body">
-                <h2 class="h5">Guests</h2>
-                <p>
-                    Keep records of guests and their contact information.
-                </p>
+            <div class="col-md-3">
+                <label class="form-label">Search by name</label>
+                <input type="search" class="form-control" name="q" value="{{ q }}" placeholder="e.g. BrightAdel">
             </div>
-        </div>
-    </div>
 
-    <div class="col-md-4">
-        <div class="card card-shadow h-100">
-            <div class="card-body">
-                <h2 class="h5">Bookings</h2>
-                <p>
-                    Track reservations, check-ins, and booking payments.
-                </p>
+            <div class="col-md-3">
+                <label class="form-label">Location</label>
+                <select class="form-select" name="location">
+                    <option value="">All locations</option>
+                    {% for loc in locations %}
+                        <option value="{{ loc }}" {% if location == loc %}selected{% endif %}>{{ loc }}</option>
+                    {% endfor %}
+                </select>
             </div>
-        </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Room type (capacity)</label>
+                <select class="form-select" name="room_type">
+                    <option value="">All room types</option>
+                    {% for rt in room_types %}
+                        <option value="{{ rt }}" {% if room_type == rt %}selected{% endif %}>{{ rt }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Sort by</label>
+                <select class="form-select" name="sort">
+                    <option value="name" {% if sort == "name" %}selected{% endif %}>Name (A–Z)</option>
+                    <option value="price_asc" {% if sort == "price_asc" %}selected{% endif %}>Price: Low → High</option>
+                    <option value="price_desc" {% if sort == "price_desc" %}selected{% endif %}>Price: High → Low</option>
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Min price (GH₵ / year)</label>
+                <input type="number" min="0" class="form-control" name="min_price" value="{{ min_price_str }}">
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Max price (GH₵ / year)</label>
+                <input type="number" min="0" class="form-control" name="max_price" value="{{ max_price_str }}">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">Amenities included in the fee</label>
+                <div class="border rounded p-2">
+                    {% for amenity in amenities %}
+                        <div class="form-check form-check-inline">
+                            <input
+                                class="form-check-input"
+                                type="checkbox"
+                                name="amenities"
+                                value="{{ amenity }}"
+                                id="f_{{ amenity }}"
+                                {% if amenity in included_amenities %}checked{% endif %}
+                            >
+                            <label class="form-check-label" for="f_{{ amenity }}">{{ amenity.title() }}</label>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="col-md-3 d-flex align-items-end">
+                <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" name="ac" id="f_ac" value="on" {% if ac %}checked{% endif %}>
+                    <label class="form-check-label" for="f_ac">❄️ AC included</label>
+                </div>
+            </div>
+
+            <div class="col-md-3 d-flex align-items-end">
+                <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" name="slots" id="f_slots" value="on" {% if has_slots %}checked{% endif %}>
+                    <label class="form-check-label" for="f_slots">Has available slots</label>
+                </div>
+            </div>
+
+            <div class="col-12 d-flex gap-2 align-items-center">
+                <button class="btn btn-primary">🔍 Search</button>
+                <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">Clear</a>
+                <span class="text-muted">{{ cards|length }} hostel(s) found</span>
+            </div>
+
+        </form>
     </div>
 </div>
 
 
-<h2 class="h4 mb-4">
-    Available Rooms
-</h2>
+<h2 class="h4 mb-4">Hostels on BrightAdel</h2>
 
 <div class="row g-4">
-    {% for room in rooms %}
+    {% for card in cards %}
         <div class="col-md-4">
             <div class="card card-shadow h-100">
+
+                {% if card.cover %}
+                    <img
+                        src="{{ url_for('static', filename='uploads/' + card.cover.filename) }}"
+                        class="card-img-top"
+                        alt="{{ card.hostel.name }}"
+                        style="object-fit: cover; height: 180px;"
+                    >
+                {% endif %}
+
                 <div class="card-body">
-
                     <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h3 class="h5 mb-0">
-                            {{ room.name }}
-                        </h3>
-
-                        <span class="badge text-bg-success">
-                            {{ room.status }}
-                        </span>
+                        <h3 class="h5 mb-0">{{ card.hostel.name }}</h3>
+                        <span class="badge text-bg-success">{{ card.available_slots }} slots</span>
                     </div>
 
                     <p class="text-muted mb-2">
-                        {{ room.room_type.title() }} • Sleeps {{ room.capacity }}
+                        📍 {{ card.hostel.location }}
+                        {% if card.hostel.has_ac %} • ❄️ AC included{% endif %}
+                    </p>
+
+                    <p class="mb-2">
+                        {% if card.hostel.paid_amenities_list %}
+                            <small class="text-muted">
+                                Paid separately: {{ card.hostel.paid_amenities_list|join(', ')|title }}
+                            </small>
+                        {% else %}
+                            <small class="text-success">Water, electricity & wifi included</small>
+                        {% endif %}
                     </p>
 
                     <p class="fw-bold mb-0">
-                        ${{ "%.2f"|format(room.price) }} / night
+                        {% if card.min_price %}
+                            From GH₵ {{ "%.2f"|format(card.min_price) }} / year
+                        {% else %}
+                            No rooms yet
+                        {% endif %}
                     </p>
+                </div>
 
+                <div class="card-footer bg-white">
+                    <a class="btn btn-outline-primary btn-sm w-100" href="{{ url_for('hostel_detail', hostel_id=card.hostel.id) }}">
+                        View Rooms & Photos
+                    </a>
                 </div>
             </div>
         </div>
     {% else %}
         <div class="col-12">
             <div class="alert alert-info">
-                No rooms are available yet.
-                Please run the seed command or add rooms as an admin.
+                No hostels match your search. Try clearing some filters.
             </div>
         </div>
     {% endfor %}
