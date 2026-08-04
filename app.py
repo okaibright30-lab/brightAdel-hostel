@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from functools import wraps
 
+import requests
 from flask import (
     Flask,
     render_template,
@@ -12,6 +13,7 @@ from flask import (
     url_for,
     flash,
     abort,
+    session,
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -42,6 +44,15 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 login_manager.login_message_category = "warning"
+
+
+# -----------------------------
+# PAYSTACK CONFIGURATION
+# Paste your TEST secret key between the quotes below.
+# It starts with sk_test_ ...
+# Leave empty ("") to stay in simulated test mode.
+# -----------------------------
+PAYSTACK_SECRET_KEY = "sk_test_4d1c2d0e267e8aa8e384309d164588f4cf78ae67"
 
 
 HOSTEL_LOCATIONS = ["Ayensu", "Kwaprow", "Amamoma", "Old Site"]
@@ -177,7 +188,7 @@ class Payment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     booking_id = db.Column(db.Integer, db.ForeignKey("bookings.id"), nullable=False)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
-    method = db.Column(db.String(50), nullable=False, default="paystack-test")
+    method = db.Column(db.String(50), nullable=False, default="paystack")
     status = db.Column(db.String(20), nullable=False, default="success")
     reference = db.Column(db.String(100), unique=True, nullable=False)
     paid_at = db.Column(db.DateTime, default=utcnow)
@@ -250,17 +261,14 @@ def index():
     for hostel in query.all():
         rooms = list(hostel.rooms)
 
-        # Filter by room type (capacity)
         if room_type:
             rooms = [r for r in rooms if r.room_type == room_type]
             if not rooms:
                 continue
 
-        # Filter by AC
         if ac and not hostel.has_ac:
             continue
 
-        # Filter by amenities included in the fee
         skip = False
         for amenity in included_amenities:
             if amenity in hostel.paid_amenities_list:
@@ -274,11 +282,9 @@ def index():
         prices = [r.price_per_year for r in rooms]
         cheapest = min(prices, default=None)
 
-        # Filter by availability
         if has_slots and available_slots <= 0:
             continue
 
-        # Filter by price range (based on cheapest room)
         if max_price is not None and (cheapest is None or cheapest > max_price):
             continue
         if min_price is not None and (cheapest is None or cheapest < min_price):
@@ -296,7 +302,6 @@ def index():
             "cover": cover,
         })
 
-    # Sorting
     if sort == "price_asc":
         cards.sort(key=lambda c: c["min_price"] if c["min_price"] is not None else Decimal("999999999"))
     elif sort == "price_desc":
@@ -497,24 +502,122 @@ def booking_pay(booking_id):
             flash("Nothing left to pay. Your booking is fully paid.", "info")
             return redirect(url_for("booking_receipt", booking_id=booking.id))
 
+        if PAYSTACK_SECRET_KEY:
+            # ---------- REAL PAYSTACK ----------
+            callback_url = url_for("payment_callback", booking_id=booking.id, _external=True)
+
+            payload = {
+                "email": current_user.email,
+                "amount": int(amount * 100),  # Paystack works in pesewas
+                "callback_url": callback_url,
+                "metadata": {
+                    "booking_id": booking.id,
+                    "student": current_user.username,
+                },
+            }
+            headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
+
+            try:
+                resp = requests.post(
+                    "https://api.paystack.co/transaction/initialize",
+                    json=payload,
+                    headers=headers,
+                    timeout=30,
+                )
+                data = resp.json()
+            except Exception:
+                flash("Could not reach Paystack. Check your internet connection.", "danger")
+                return redirect(url_for("booking_pay", booking_id=booking.id))
+
+            if not data.get("status"):
+                flash(f"Paystack error: {data.get('message', 'Unknown error')}", "danger")
+                return redirect(url_for("booking_pay", booking_id=booking.id))
+
+            session["pending_reference"] = data["data"]["reference"]
+            return redirect(data["data"]["authorization_url"])
+        else:
+            # ---------- SIMULATED TEST MODE ----------
+            payment = Payment(
+                booking_id=booking.id,
+                amount=amount,
+                method="paystack-test",
+                status="success",
+                reference=f"BA-{booking.id}-{int(datetime.now().timestamp())}",
+            )
+            db.session.add(payment)
+
+            if booking.status == "pending" and (paid + amount) >= booking.half_fee():
+                booking.status = "confirmed"
+
+            db.session.commit()
+
+            flash("Payment successful!", "success")
+            return redirect(url_for("booking_receipt", booking_id=booking.id))
+
+    return render_template(
+        "pay.html",
+        booking=booking,
+        paystack_enabled=bool(PAYSTACK_SECRET_KEY),
+    )
+
+
+@app.route("/payment/callback/<int:booking_id>")
+@role_required("student")
+def payment_callback(booking_id):
+    booking = db.session.get(Booking, booking_id) or abort(404)
+
+    if booking.student_id != current_user.id:
+        abort(403)
+
+    reference = (
+        request.args.get("reference")
+        or request.args.get("trxref")
+        or session.pop("pending_reference", None)
+    )
+
+    if not reference:
+        flash("Payment reference missing.", "danger")
+        return redirect(url_for("my_bookings"))
+
+    if Payment.query.filter_by(reference=reference).first():
+        flash("Payment already recorded.", "info")
+        return redirect(url_for("booking_receipt", booking_id=booking.id))
+
+    headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
+
+    try:
+        resp = requests.get(
+            f"https://api.paystack.co/transaction/verify/{reference}",
+            headers=headers,
+            timeout=30,
+        )
+        data = resp.json()
+    except Exception:
+        flash("Could not verify payment. Contact support with your reference.", "danger")
+        return redirect(url_for("my_bookings"))
+
+    if data.get("status") and data["data"]["status"] == "success":
+        amount = Decimal(str(data["data"]["amount"])) / Decimal("100")
+
         payment = Payment(
             booking_id=booking.id,
             amount=amount,
-            method="paystack-test",
+            method="paystack",
             status="success",
-            reference=f"BA-{booking.id}-{int(datetime.now().timestamp())}",
+            reference=reference,
         )
         db.session.add(payment)
 
-        if booking.status == "pending" and (paid + amount) >= booking.half_fee():
+        if booking.status == "pending" and (booking.paid_amount() + amount) >= booking.half_fee():
             booking.status = "confirmed"
 
         db.session.commit()
 
-        flash("Payment successful!", "success")
+        flash("Payment confirmed by Paystack. Your slot is secured!", "success")
         return redirect(url_for("booking_receipt", booking_id=booking.id))
 
-    return render_template("pay.html", booking=booking)
+    flash("Payment was not successful. Please try again.", "warning")
+    return redirect(url_for("booking_pay", booking_id=booking.id))
 
 
 @app.route("/bookings/<int:booking_id>/receipt")

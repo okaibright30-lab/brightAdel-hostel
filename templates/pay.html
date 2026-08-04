@@ -50,7 +50,11 @@
                     </form>
 
                     <p class="text-muted text-center mt-3 mb-0">
-                        Test mode — no real money moves. Real Paystack integration comes next.
+                        {% if paystack_enabled %}
+                            🔒 You will be redirected to Paystack’s secure checkout.
+                        {% else %}
+                            Test mode — no real money moves. Add your Paystack key to go live.
+                        {% endif %}
                     </p>
                 {% endif %}
 
