@@ -52,7 +52,7 @@ login_manager.login_message_category = "warning"
 # It starts with sk_test_ ...
 # Leave empty ("") to stay in simulated test mode.
 # -----------------------------
-PAYSTACK_SECRET_KEY = "sk_test_4d1c2d0e267e8aa8e384309d164588f4cf78ae67"
+PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
 
 
 HOSTEL_LOCATIONS = ["Ayensu", "Kwaprow", "Amamoma", "Old Site"]
