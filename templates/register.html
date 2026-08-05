@@ -11,20 +11,20 @@
 
                 <h1 class="h4 mb-4">Create Account</h1>
 
-                <form method="post">
+                <form method="post" enctype="multipart/form-data">
 
                     <div class="mb-3">
-                        <label class="form-label">I am a...</label>
+                        <label class="form-label">I am here because...</label>
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="role" id="roleStudent" value="student" checked>
                             <label class="form-check-label" for="roleStudent">
-                                Student — I want to book a hostel
+                                I want to book a hostel
                             </label>
                         </div>
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="role" id="roleManager" value="manager">
                             <label class="form-check-label" for="roleManager">
-                                Manager — I want to list my hostel
+                                I want to list a hostel
                             </label>
                         </div>
                     </div>
@@ -43,20 +43,57 @@
                     <div class="mb-3">
                         <label class="form-label">Phone Number</label>
                         <input type="tel" class="form-control" name="phone" placeholder="e.g. 0244123456" required>
-                        <div class="form-text">A verification code will be sent to this number.</div>
+                        <div class="form-text">Use a 10-digit number starting with 0.</div>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Password</label>
-                        <input type="password" class="form-control" name="password" required>
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" name="password" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Confirm Password</label>
+                            <input type="password" class="form-control" name="confirm_password" required>
+                        </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Confirm Password</label>
-                        <input type="password" class="form-control" name="confirm_password" required>
+                    <div id="managerFields" style="display:none;" class="border rounded p-3 mb-3">
+                        <h2 class="h6 mb-3">🏠 Ownership Verification</h2>
+
+                        <div class="mb-3">
+                            <label class="form-label">Name of Hostel You Own</label>
+                            <input type="text" class="form-control" name="hostel_name" placeholder="e.g. Royal Hostel">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Hostel Location</label>
+                            <select class="form-select" name="location">
+                                <option value="">Select location</option>
+                                {% for loc in locations %}
+                                    <option value="{{ loc }}">{{ loc }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Proof of Ownership Document</label>
+                            <input type="file" class="form-control" name="document" accept=".png,.jpg,.jpeg,.webp,.pdf">
+                            <div class="form-text">
+                                Upload a lands document, permit, or any official proof of ownership.
+                                If your application is denied, all submitted information is deleted from our system.
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info small mb-0">
+                            📌 <strong>No SMS code is sent for listing applications.</strong><br>
+                            Your account is verified when the admin approves your ownership document.
+                            You can log in only after approval.
+                        </div>
                     </div>
 
-                    <button class="btn btn-primary w-100">Send Verification Code</button>
+                    <button class="btn btn-primary w-100">
+                        <span id="submitLabel">Send Verification Code</span>
+                    </button>
 
                 </form>
 
@@ -68,5 +105,18 @@
         </div>
     </div>
 </div>
+
+<script>
+    const managerFields = document.getElementById('managerFields');
+    const submitLabel = document.getElementById('submitLabel');
+
+    document.querySelectorAll('input[name="role"]').forEach(function (radio) {
+        radio.addEventListener('change', function (e) {
+            const isManager = e.target.value === 'manager';
+            managerFields.style.display = isManager ? 'block' : 'none';
+            submitLabel.textContent = isManager ? 'Submit Application for Review' : 'Send Verification Code';
+        });
+    });
+</script>
 
 {% endblock %}

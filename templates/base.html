@@ -32,18 +32,15 @@
 
         a { color: var(--ucc-blue-light); }
 
-        /* Navbar — deep UCC blue */
         .navbar-ucc { background: var(--ucc-blue); }
         .navbar-ucc .navbar-brand { color: #fff; font-weight: 700; }
         .navbar-ucc .navbar-brand span { color: var(--ucc-gold); }
         .navbar-ucc .nav-link { color: rgba(255, 255, 255, .85); }
         .navbar-ucc .nav-link:hover { color: var(--ucc-gold); }
 
-        /* Footer — deep UCC blue */
         .footer-ucc { background: var(--ucc-blue); color: #fff; }
         .footer-ucc span { color: rgba(255,255,255,.85); }
 
-        /* Hero — blue gradient with a soft gold glow */
         .hero {
             background: linear-gradient(135deg, var(--ucc-blue) 0%, var(--ucc-blue-light) 100%);
             color: #fff;
@@ -63,11 +60,9 @@
         }
         .text-gold { color: var(--ucc-gold); }
 
-        /* Cards — soft, rounded, modern */
         .card { border: none; border-radius: 14px; }
         .card-shadow { box-shadow: 0 10px 30px rgba(0, 40, 85, .10); }
 
-        /* Buttons — rounded, friendly */
         .btn { border-radius: 9px; font-weight: 500; }
         .btn-primary { background: var(--ucc-blue-light); border-color: var(--ucc-blue-light); }
         .btn-primary:hover { background: var(--ucc-blue); border-color: var(--ucc-blue); }
@@ -77,25 +72,21 @@
         .btn-gold { background: var(--ucc-gold); border-color: var(--ucc-gold); color: #20304a; font-weight: 600; }
         .btn-gold:hover { background: var(--ucc-gold-dark); border-color: var(--ucc-gold-dark); color: #20304a; }
 
-        /* Pay / success buttons = gold (money!) */
         .btn-success { background: var(--ucc-gold); border-color: var(--ucc-gold); color: #20304a; font-weight: 600; }
         .btn-success:hover { background: var(--ucc-gold-dark); border-color: var(--ucc-gold-dark); color: #20304a; }
         .btn-outline-success { color: var(--ucc-gold-dark); border-color: var(--ucc-gold); }
         .btn-outline-success:hover { background: var(--ucc-gold); border-color: var(--ucc-gold); color: #20304a; }
 
-        /* Danger = UCC red */
         .btn-danger { background: var(--ucc-red); border-color: var(--ucc-red); }
         .btn-outline-danger { color: var(--ucc-red); border-color: var(--ucc-red); }
         .btn-outline-danger:hover { background: var(--ucc-red); border-color: var(--ucc-red); color: #fff; }
 
-        /* Badges — themed */
         .text-bg-success { background-color: var(--ucc-gold) !important; color: #3a2c00 !important; }
         .text-bg-primary { background-color: var(--ucc-blue-light) !important; }
         .text-bg-danger { background-color: var(--ucc-red) !important; }
         .text-bg-info { background-color: var(--ucc-blue-light) !important; }
         .text-bg-warning { background-color: #ffe08a !important; color: #4a3b00 !important; }
 
-        /* Tables — blue headers with a gold underline */
         .table thead th {
             color: var(--ucc-blue);
             font-weight: 600;
@@ -130,9 +121,18 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('manager_dashboard') }}">Manager Desk</a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('manager_receipts') }}">Receipts</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('verify_receipt') }}">Verify Receipt</a>
+                        </li>
                     {% elif current_user.role == "admin" %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Overview</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_applications') }}">Applications</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('admin_users') }}">Users</a>

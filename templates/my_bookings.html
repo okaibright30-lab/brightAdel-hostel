@@ -37,6 +37,8 @@
                             <span class="badge text-bg-warning">pending</span>
                         {% elif booking.status == "checked_in" %}
                             <span class="badge text-bg-primary">checked in</span>
+                        {% elif booking.status == "checkout_requested" %}
+                            <span class="badge text-bg-danger">check-out requested</span>
                         {% elif booking.status == "cancelled" %}
                             <span class="badge text-bg-secondary">cancelled</span>
                         {% else %}
@@ -44,12 +46,20 @@
                         {% endif %}
                     </td>
                     <td>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 flex-wrap">
                             {% if booking.status == "pending" %}
                                 <a class="btn btn-sm btn-success" href="{{ url_for('booking_pay', booking_id=booking.id) }}">Pay Now</a>
                                 <form method="post" action="{{ url_for('booking_cancel', booking_id=booking.id) }}" onsubmit="return confirm('Cancel this booking?');">
                                     <button class="btn btn-sm btn-outline-danger">Cancel</button>
                                 </form>
+                            {% elif booking.status == "checkout_requested" %}
+                                <form method="post" action="{{ url_for('booking_approve_checkout', booking_id=booking.id) }}">
+                                    <button class="btn btn-sm btn-success">Approve Check-Out</button>
+                                </form>
+                                <form method="post" action="{{ url_for('booking_decline_checkout', booking_id=booking.id) }}">
+                                    <button class="btn btn-sm btn-outline-danger">Decline</button>
+                                </form>
+                                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('booking_receipt', booking_id=booking.id) }}">Receipt</a>
                             {% elif booking.status in ["confirmed", "checked_in"] %}
                                 {% if booking.balance() > 0 %}
                                     <a class="btn btn-sm btn-success" href="{{ url_for('booking_pay', booking_id=booking.id) }}">Pay Balance</a>

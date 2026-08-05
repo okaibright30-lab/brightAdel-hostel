@@ -22,6 +22,13 @@
                     {% endif %}
                 </div>
 
+                <div class="alert alert-warning text-center mb-4">
+                    🔐 Verification Code:
+                    <strong class="fs-5" style="letter-spacing: 3px;">{{ code }}</strong>
+                    <br>
+                    <small>Managers use this code to confirm this receipt is genuine.</small>
+                </div>
+
                 <hr>
 
                 <div class="row mb-4">
@@ -85,6 +92,8 @@
             <button class="btn btn-primary" onclick="window.print()">Print Receipt</button>
             {% if current_user.role == "student" %}
                 <a class="btn btn-outline-secondary" href="{{ url_for('my_bookings') }}">Back to My Bookings</a>
+            {% elif current_user.role == "manager" %}
+                <a class="btn btn-outline-secondary" href="{{ url_for('manager_receipts') }}">Back to Receipts</a>
             {% else %}
                 <a class="btn btn-outline-secondary" href="{{ url_for('admin_dashboard') }}">Back to Overview</a>
             {% endif %}

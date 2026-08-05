@@ -13,4 +13,9 @@ Manager
     Phone: 0531402674
     Password: Selorm11
 
+    cd ~/Desktop/brightadel-hostel
+    source venv/Scripts/activate
+    bash start.sh
+    http://127.0.0.1:5000
+
     */

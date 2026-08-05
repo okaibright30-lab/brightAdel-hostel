@@ -1,6 +1,8 @@
 import os
 import random
 import uuid
+import hashlib
+import hmac
 from datetime import datetime, timezone
 from decimal import Decimal
 from functools import wraps
@@ -51,9 +53,6 @@ login_manager.login_message_category = "warning"
 # CONFIGURATION
 # -----------------------------
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
-
-# Paste an SMS provider key here later (mNotify / Hubtel / Twilio).
-# While empty, verification codes are shown on screen (test mode).
 SMS_API_KEY = os.environ.get("SMS_API_KEY", "")
 
 
@@ -66,8 +65,8 @@ ROOM_TYPE_CAPACITY = {
     "3 in a room": 3,
     "4 in a room": 4,
 }
-BOOKING_STATUSES = ["pending", "confirmed", "checked_in", "checked_out", "cancelled"]
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+BOOKING_STATUSES = ["pending", "confirmed", "checked_in", "checkout_requested", "checked_out", "cancelled"]
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf"}
 
 COMMISSION_RATE = Decimal("0.02")
 
@@ -95,8 +94,13 @@ def send_sms(phone, message):
     if not SMS_API_KEY:
         print(f"[SMS TEST MODE] To {phone}: {message}")
         return True
-    # Real SMS provider integration will go here later.
     return True
+
+
+def receipt_code(booking):
+    secret = app.config["SECRET_KEY"]
+    digest = hmac.new(secret.encode(), f"BA-{booking.id}".encode(), hashlib.sha256).hexdigest()
+    return digest[:8].upper()
 
 
 # -----------------------------
@@ -107,11 +111,11 @@ class User(UserMixin, db.Model):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(120), nullable=False)  # display full name
+    username = db.Column(db.String(120), nullable=False)
     first_name = db.Column(db.String(60), nullable=False)
     last_name = db.Column(db.String(60), nullable=False)
     phone = db.Column(db.String(15), unique=True, nullable=False)
-    email = db.Column(db.String(120), nullable=False)  # synthetic, used by Paystack
+    email = db.Column(db.String(120), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False, default="student")
     suspended = db.Column(db.Boolean, default=False, nullable=False)
@@ -124,6 +128,21 @@ class User(UserMixin, db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class ManagerApplication(db.Model):
+    __tablename__ = "manager_applications"
+
+    id = db.Column(db.Integer, primary_key=True)
+    first_name = db.Column(db.String(60), nullable=False)
+    last_name = db.Column(db.String(60), nullable=False)
+    phone = db.Column(db.String(15), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    hostel_name = db.Column(db.String(120), nullable=False)
+    location = db.Column(db.String(50), nullable=False)
+    doc_filename = db.Column(db.String(200), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    created_at = db.Column(db.DateTime, default=utcnow)
 
 
 class Hostel(db.Model):
@@ -175,7 +194,7 @@ class Room(db.Model):
     def booked_slots(self):
         return Booking.query.filter(
             Booking.room_id == self.id,
-            Booking.status.in_(["confirmed", "checked_in"]),
+            Booking.status.in_(["confirmed", "checked_in", "checkout_requested"]),
         ).count()
 
     def available_slots(self):
@@ -369,7 +388,7 @@ def hostel_detail(hostel_id):
 
 
 # -----------------------------
-# Authentication: register + SMS verify + login
+# Authentication
 # -----------------------------
 
 @app.route("/register", methods=["GET", "POST"])
@@ -402,25 +421,63 @@ def register():
 
         if error:
             flash(error, "danger")
-        else:
-            code = f"{random.randint(0, 999999):06d}"
+            return render_template("register.html", locations=HOSTEL_LOCATIONS)
 
-            session["reg_data"] = {
-                "first_name": first_name,
-                "last_name": last_name,
-                "phone": phone,
-                "password_hash": generate_password_hash(password),
-                "role": role,
-            }
-            session["reg_code"] = code
-            session["reg_time"] = int(datetime.now().timestamp())
+        if role == "manager":
+            hostel_name = request.form.get("hostel_name", "").strip()
+            location = request.form.get("location", "")
+            file = request.files.get("document")
 
-            send_sms(phone, f"BrightAdel verification code: {code}")
+            if not hostel_name:
+                flash("Please enter the name of the hostel you own.", "danger")
+            elif location not in HOSTEL_LOCATIONS:
+                flash("Please choose the hostel location.", "danger")
+            elif not file or file.filename == "":
+                flash("Please upload a proof-of-ownership document.", "danger")
+            elif not allowed_file(file.filename):
+                flash("Document must be JPG, PNG, WEBP or PDF.", "danger")
+            elif ManagerApplication.query.filter_by(phone=phone, status="pending").first():
+                flash("You already have an application under review.", "warning")
+            else:
+                filename = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
+                file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
 
-            flash("We sent a 6-digit verification code to your phone.", "info")
-            return redirect(url_for("verify"))
+                application = ManagerApplication(
+                    first_name=first_name,
+                    last_name=last_name,
+                    phone=phone,
+                    password_hash=generate_password_hash(password),
+                    hostel_name=hostel_name,
+                    location=location,
+                    doc_filename=filename,
+                    status="pending",
+                )
+                db.session.add(application)
+                db.session.commit()
 
-    return render_template("register.html")
+                flash("Application submitted! The admin will review your ownership document. You can log in once approved.", "success")
+                return redirect(url_for("login"))
+
+            return render_template("register.html", locations=HOSTEL_LOCATIONS)
+
+        code = f"{random.randint(0, 999999):06d}"
+
+        session["reg_data"] = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "phone": phone,
+            "password_hash": generate_password_hash(password),
+            "role": "student",
+        }
+        session["reg_code"] = code
+        session["reg_time"] = int(datetime.now().timestamp())
+
+        send_sms(phone, f"BrightAdel verification code: {code}")
+
+        flash("We sent a 6-digit verification code to your phone.", "info")
+        return redirect(url_for("verify"))
+
+    return render_template("register.html", locations=HOSTEL_LOCATIONS)
 
 
 @app.route("/verify", methods=["GET", "POST"])
@@ -452,7 +509,7 @@ def verify():
                 last_name=data["last_name"],
                 phone=phone,
                 email=f"{phone}@brightadel.com",
-                role=data["role"],
+                role="student",
             )
             user.password_hash = data["password_hash"]
 
@@ -510,7 +567,12 @@ def login():
                 flash(f"Welcome back, {user.username}!", "success")
                 return redirect(url_for("dashboard"))
         else:
-            flash("Invalid phone number or password.", "danger")
+            pending = ManagerApplication.query.filter_by(phone=phone, status="pending").first()
+
+            if pending:
+                flash("Your application to list a hostel is still under review.", "warning")
+            else:
+                flash("Invalid phone number or password.", "danger")
 
     return render_template("login.html")
 
@@ -534,7 +596,7 @@ def dashboard():
 
 
 # -----------------------------
-# Student: bookings, payment, receipt, leave
+# Student: bookings, payment, receipt, checkout
 # -----------------------------
 
 @app.route("/my/bookings")
@@ -552,14 +614,7 @@ def booking_new(room_id):
     if request.method == "POST":
         notes = request.form.get("notes", "").strip()
 
-        active = Booking.query.filter(
-            Booking.student_id == current_user.id,
-            Booking.status.in_(["pending", "confirmed", "checked_in"]),
-        ).count()
-
-        if active > 0:
-            flash("You already have an active booking. Pay, cancel or check out of it first.", "danger")
-        elif room.available_slots() <= 0:
+        if room.available_slots() <= 0:
             flash("No slots left in this room type.", "danger")
         else:
             booking = Booking(
@@ -728,14 +783,16 @@ def payment_callback(booking_id):
 
 
 @app.route("/bookings/<int:booking_id>/receipt")
-@role_required("student", "admin")
+@role_required("student", "manager", "admin")
 def booking_receipt(booking_id):
     booking = db.session.get(Booking, booking_id) or abort(404)
 
     if current_user.role == "student" and booking.student_id != current_user.id:
         abort(403)
+    if current_user.role == "manager" and not manager_owns_hostel(booking.room.hostel):
+        abort(403)
 
-    return render_template("receipt.html", booking=booking)
+    return render_template("receipt.html", booking=booking, code=receipt_code(booking))
 
 
 @app.route("/bookings/<int:booking_id>/cancel", methods=["POST"])
@@ -774,8 +831,44 @@ def booking_leave(booking_id):
     return redirect(url_for("my_bookings"))
 
 
+@app.route("/bookings/<int:booking_id>/approve-checkout", methods=["POST"])
+@role_required("student")
+def booking_approve_checkout(booking_id):
+    booking = db.session.get(Booking, booking_id) or abort(404)
+
+    if booking.student_id != current_user.id:
+        abort(403)
+
+    if booking.status != "checkout_requested":
+        flash("There is no check-out request on this booking.", "warning")
+    else:
+        booking.status = "checked_out"
+        db.session.commit()
+        flash("You approved the check-out. Your slot has been freed.", "success")
+
+    return redirect(url_for("my_bookings"))
+
+
+@app.route("/bookings/<int:booking_id>/decline-checkout", methods=["POST"])
+@role_required("student")
+def booking_decline_checkout(booking_id):
+    booking = db.session.get(Booking, booking_id) or abort(404)
+
+    if booking.student_id != current_user.id:
+        abort(403)
+
+    if booking.status != "checkout_requested":
+        flash("There is no check-out request on this booking.", "warning")
+    else:
+        booking.status = "checked_in"
+        db.session.commit()
+        flash("You declined the check-out request. You remain in the hostel.", "info")
+
+    return redirect(url_for("my_bookings"))
+
+
 # -----------------------------
-# Manager: hostels, rooms, photos, bookings
+# Manager: hostels, rooms, photos, bookings, receipts
 # -----------------------------
 
 @app.route("/manager")
@@ -799,25 +892,49 @@ def manager_dashboard():
             bookings.extend(room.bookings)
     bookings.sort(key=lambda b: b.created_at, reverse=True)
 
-    hostel_ids = [h.id for h in hostels]
-    gross_revenue = Decimal("0")
-    if hostel_ids:
-        value = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).select_from(Payment).join(Booking).join(Room).filter(Room.hostel_id.in_(hostel_ids), Payment.status == "success").scalar()
-        gross_revenue = Decimal(str(value))
-
-    platform_fee = money(gross_revenue * COMMISSION_RATE)
-    net_revenue = gross_revenue - platform_fee
-
     return render_template(
         "manager_dashboard.html",
         hostels=hostels,
         total_slots=total_slots,
         booked_slots=booked_slots,
         bookings=bookings,
-        gross_revenue=gross_revenue,
-        platform_fee=platform_fee,
-        net_revenue=net_revenue,
     )
+
+
+@app.route("/manager/receipts")
+@role_required("manager", "admin")
+def manager_receipts():
+    if current_user.role == "admin":
+        bookings = Booking.query.all()
+    else:
+        hostel_ids = [h.id for h in Hostel.query.filter_by(manager_id=current_user.id).all()]
+        bookings = Booking.query.join(Room).filter(Room.hostel_id.in_(hostel_ids)).all() if hostel_ids else []
+
+    paid = [b for b in bookings if b.paid_amount() > 0]
+    paid.sort(key=lambda b: b.created_at, reverse=True)
+
+    return render_template("manager_receipts.html", bookings=paid)
+
+
+@app.route("/manager/verify-receipt", methods=["GET", "POST"])
+@role_required("manager", "admin")
+def verify_receipt():
+    result = None
+    result_code = ""
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip().upper()
+
+        for booking in Booking.query.all():
+            if receipt_code(booking) == code:
+                result = booking
+                result_code = code
+                break
+
+        if not result:
+            flash("No receipt matches this code. It may be FAKE.", "danger")
+
+    return render_template("verify_receipt.html", result=result, result_code=result_code)
 
 
 @app.route("/manager/hostels/new", methods=["GET", "POST"])
@@ -1037,26 +1154,26 @@ def booking_checkin(booking_id):
     return redirect(request.referrer or url_for("manager_dashboard"))
 
 
-@app.route("/manager/bookings/<int:booking_id>/checkout", methods=["POST"])
+@app.route("/manager/bookings/<int:booking_id>/request-checkout", methods=["POST"])
 @role_required("manager", "admin")
-def booking_checkout(booking_id):
+def booking_request_checkout(booking_id):
     booking = db.session.get(Booking, booking_id) or abort(404)
 
     if not manager_owns_hostel(booking.room.hostel):
         abort(403)
 
     if booking.status != "checked_in":
-        flash("Only checked-in bookings can be checked out.", "warning")
+        flash("Only checked-in students can be requested to check out.", "warning")
     else:
-        booking.status = "checked_out"
+        booking.status = "checkout_requested"
         db.session.commit()
-        flash(f"{booking.student.username} checked out.", "success")
+        flash("Check-out request sent. The student must approve it.", "info")
 
     return redirect(request.referrer or url_for("manager_dashboard"))
 
 
 # -----------------------------
-# Admin: oversight + 2% commission
+# Admin: oversight + commission + applications
 # -----------------------------
 
 @app.route("/admin")
@@ -1104,6 +1221,52 @@ def admin_dashboard():
     )
 
 
+@app.route("/admin/applications")
+@role_required("admin")
+def admin_applications():
+    applications = ManagerApplication.query.order_by(ManagerApplication.created_at.desc()).all()
+    return render_template("admin_applications.html", applications=applications)
+
+
+@app.route("/admin/applications/<int:app_id>/review", methods=["POST"])
+@role_required("admin")
+def admin_application_review(app_id):
+    application = db.session.get(ManagerApplication, app_id) or abort(404)
+    decision = request.form.get("decision", "")
+
+    if application.status != "pending":
+        flash("This application was already reviewed.", "warning")
+    elif decision == "approve":
+        if User.query.filter_by(phone=application.phone).first():
+            flash("A user with this phone number already exists.", "danger")
+        else:
+            user = User(
+                username=f"{application.first_name} {application.last_name}",
+                first_name=application.first_name,
+                last_name=application.last_name,
+                phone=application.phone,
+                email=f"{application.phone}@brightadel.com",
+                role="manager",
+            )
+            user.password_hash = application.password_hash
+            db.session.add(user)
+            db.session.delete(application)
+            db.session.commit()
+            flash(f"{user.username} approved as a manager. They can now log in.", "success")
+    elif decision == "reject":
+        # Delete ALL submitted information (record + document file) to free space
+        path = os.path.join(app.config["UPLOAD_FOLDER"], application.doc_filename)
+        if os.path.exists(path):
+            os.remove(path)
+        db.session.delete(application)
+        db.session.commit()
+        flash("Application denied. All submitted information has been deleted.", "success")
+    else:
+        flash("Invalid decision.", "danger")
+
+    return redirect(url_for("admin_applications"))
+
+
 @app.route("/admin/users")
 @role_required("admin")
 def admin_users():
@@ -1147,7 +1310,7 @@ def admin_user_delete(user_id):
 
 
 # -----------------------------
-# Seed: backend admin ONLY (no demo data)
+# Seed: backend admin ONLY
 # -----------------------------
 
 @app.cli.command("seed")

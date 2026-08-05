@@ -53,7 +53,7 @@
         <thead>
             <tr>
                 <th>Room Type</th>
-                <th>Slots Available</th>
+                <th>Available Slots</th>
                 <th>Price / Year</th>
                 <th></th>
             </tr>
@@ -62,7 +62,7 @@
             {% for room in rooms %}
                 <tr>
                     <td>{{ room.room_type }}</td>
-                    <td>{{ room.available_slots() }} / {{ room.total_slots }}</td>
+                    <td><span class="badge text-bg-success fs-6">{{ room.available_slots() }}</span></td>
                     <td>GH₵ {{ "%.2f"|format(room.price_per_year) }}</td>
                     <td>
                         {% if current_user.is_authenticated and current_user.role == "student" %}

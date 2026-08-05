@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Manager Applications | BrightAdel{% endblock %}
+
+{% block content %}
+
+<h1 class="h3 mb-4">Manager Applications</h1>
+
+<p class="text-muted mb-4">
+    Review each applicant's proof of ownership before approving them as a manager.
+</p>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Applicant</th>
+                <th>Phone</th>
+                <th>Hostel</th>
+                <th>Location</th>
+                <th>Document</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for application in applications %}
+                <tr>
+                    <td>{{ application.first_name }} {{ application.last_name }}</td>
+                    <td>{{ application.phone }}</td>
+                    <td>{{ application.hostel_name }}</td>
+                    <td>{{ application.location }}</td>
+                    <td>
+                        <a class="btn btn-sm btn-outline-primary" target="_blank"
+                           href="{{ url_for('static', filename='uploads/' + application.doc_filename) }}">
+                            View Document
+                        </a>
+                    </td>
+                    <td>
+                        {% if application.status == "pending" %}
+                            <span class="badge text-bg-warning">pending</span>
+                        {% elif application.status == "approved" %}
+                            <span class="badge text-bg-success">approved</span>
+                        {% else %}
+                            <span class="badge text-bg-danger">rejected</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if application.status == "pending" %}
+                            <div class="d-flex gap-2">
+                                <form method="post" action="{{ url_for('admin_application_review', app_id=application.id) }}">
+                                    <button name="decision" value="approve" class="btn btn-sm btn-success">Approve</button>
+                                </form>
+                                <form method="post" action="{{ url_for('admin_application_review', app_id=application.id) }}" onsubmit="return confirm('Reject this application?');">
+                                    <button name="decision" value="reject" class="btn btn-sm btn-outline-danger">Reject</button>
+                                </form>
+                            </div>
+                        {% else %}
+                            <span class="text-muted">reviewed</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="7">No manager applications yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

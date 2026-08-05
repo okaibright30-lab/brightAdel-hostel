@@ -12,7 +12,7 @@
     </div>
 </div>
 
-<div class="row g-3 mb-3">
+<div class="row g-3 mb-4">
     <div class="col-md-4">
         <div class="card card-shadow h-100">
             <div class="card-body">
@@ -34,36 +34,6 @@
             <div class="card-body">
                 <h2 class="h6 text-muted">Slots Booked</h2>
                 <p class="h3 mb-0">{{ booked_slots }}</p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="card card-shadow h-100">
-            <div class="card-body">
-                <h2 class="h6 text-muted">Gross Revenue</h2>
-                <p class="h4 mb-0">GH₵ {{ "%.2f"|format(gross_revenue) }}</p>
-                <small class="text-muted">All payments collected</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card card-shadow h-100" style="border-left: 5px solid #c8102e;">
-            <div class="card-body">
-                <h2 class="h6 text-muted">Platform Fee (2%)</h2>
-                <p class="h4 mb-0" style="color:#c8102e;">GH₵ {{ "%.2f"|format(platform_fee) }}</p>
-                <small class="text-muted">Goes to BrightAdel admin</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card card-shadow h-100" style="border-left: 5px solid #ffb81c;">
-            <div class="card-body">
-                <h2 class="h6 text-muted">Your Net Revenue</h2>
-                <p class="h4 mb-0 text-gold">GH₵ {{ "%.2f"|format(net_revenue) }}</p>
-                <small class="text-muted">What you actually earn</small>
             </div>
         </div>
     </div>
@@ -126,6 +96,8 @@
                             <span class="badge text-bg-warning">pending</span>
                         {% elif booking.status == "checked_in" %}
                             <span class="badge text-bg-primary">checked in</span>
+                        {% elif booking.status == "checkout_requested" %}
+                            <span class="badge text-bg-danger">awaiting student approval</span>
                         {% elif booking.status == "cancelled" %}
                             <span class="badge text-bg-secondary">cancelled</span>
                         {% else %}
@@ -139,8 +111,8 @@
                                     <button class="btn btn-sm btn-success">Check In</button>
                                 </form>
                             {% elif booking.status == "checked_in" %}
-                                <form method="post" action="{{ url_for('booking_checkout', booking_id=booking.id) }}">
-                                    <button class="btn btn-sm btn-outline-dark">Check Out</button>
+                                <form method="post" action="{{ url_for('booking_request_checkout', booking_id=booking.id) }}" onsubmit="return confirm('Send a check-out request to this student?');">
+                                    <button class="btn btn-sm btn-outline-dark">Request Check-Out</button>
                                 </form>
                             {% endif %}
                         </div>

@@ -18,8 +18,8 @@
                 <form method="post">
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label">Slots Left</label>
-                            <input type="text" class="form-control" value="{{ room.available_slots() }} of {{ room.total_slots }}" disabled>
+                            <label class="form-label">Available Slots</label>
+                            <input type="text" class="form-control" value="{{ room.available_slots() }}" disabled>
                         </div>
                         <div class="col-12">
                             <label class="form-label">Notes (optional)</label>
