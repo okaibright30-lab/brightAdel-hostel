@@ -4,12 +4,21 @@
 
 {% block content %}
 
-<section class="hero rounded-4 p-5 mb-4">
-    <h1 class="display-5 fw-bold">Find your perfect student hostel</h1>
+<section class="hero p-5 mb-4">
+    <h1 class="display-5 fw-bold">
+        Find your <span class="text-gold">perfect</span> student hostel
+    </h1>
     <p class="lead">
         Search hostels in Ayensu, Kwaprow, Amamoma and Old Site.
         Book a slot, pay online in cedis and get your receipt instantly.
     </p>
+
+    {% if not current_user.is_authenticated %}
+        <div class="d-flex gap-2 mt-3">
+            <a class="btn btn-gold btn-lg" href="{{ url_for('register') }}">I'm a Student</a>
+            <a class="btn btn-outline-light btn-lg" href="{{ url_for('register') }}">I'm a Manager</a>
+        </div>
+    {% endif %}
 </section>
 
 
@@ -142,7 +151,7 @@
                         {% endif %}
                     </p>
 
-                    <p class="fw-bold mb-0">
+                    <p class="fw-bold mb-0 price-text">
                         {% if card.min_price %}
                             From GH₵ {{ "%.2f"|format(card.min_price) }} / year
                         {% else %}
