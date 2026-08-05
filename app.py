@@ -1,4 +1,5 @@
 import os
+import random
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -47,12 +48,13 @@ login_manager.login_message_category = "warning"
 
 
 # -----------------------------
-# PAYSTACK CONFIGURATION
-# Paste your TEST secret key between the quotes below.
-# It starts with sk_test_ ...
-# Leave empty ("") to stay in simulated test mode.
+# CONFIGURATION
 # -----------------------------
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+
+# Paste an SMS provider key here later (mNotify / Hubtel / Twilio).
+# While empty, verification codes are shown on screen (test mode).
+SMS_API_KEY = os.environ.get("SMS_API_KEY", "")
 
 
 HOSTEL_LOCATIONS = ["Ayensu", "Kwaprow", "Amamoma", "Old Site"]
@@ -67,9 +69,34 @@ ROOM_TYPE_CAPACITY = {
 BOOKING_STATUSES = ["pending", "confirmed", "checked_in", "checked_out", "cancelled"]
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 
+COMMISSION_RATE = Decimal("0.02")
+
 
 def utcnow():
     return datetime.now(timezone.utc)
+
+
+def money(value):
+    return Decimal(str(value)).quantize(Decimal("0.01"))
+
+
+def normalize_phone(value):
+    digits = "".join(ch for ch in (value or "") if ch.isdigit())
+    if digits.startswith("233") and len(digits) == 12:
+        digits = "0" + digits[3:]
+    return digits
+
+
+def valid_phone(digits):
+    return digits.startswith("0") and len(digits) == 10
+
+
+def send_sms(phone, message):
+    if not SMS_API_KEY:
+        print(f"[SMS TEST MODE] To {phone}: {message}")
+        return True
+    # Real SMS provider integration will go here later.
+    return True
 
 
 # -----------------------------
@@ -80,8 +107,11 @@ class User(UserMixin, db.Model):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    username = db.Column(db.String(120), nullable=False)  # display full name
+    first_name = db.Column(db.String(60), nullable=False)
+    last_name = db.Column(db.String(60), nullable=False)
+    phone = db.Column(db.String(15), unique=True, nullable=False)
+    email = db.Column(db.String(120), nullable=False)  # synthetic, used by Paystack
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False, default="student")
     suspended = db.Column(db.Boolean, default=False, nullable=False)
@@ -180,6 +210,9 @@ class Booking(db.Model):
 
     def half_fee(self):
         return Decimal(str(self.total_amount)) / Decimal("2")
+
+    def commission(self):
+        return money(self.paid_amount() * COMMISSION_RATE)
 
 
 class Payment(db.Model):
@@ -336,7 +369,7 @@ def hostel_detail(hostel_id):
 
 
 # -----------------------------
-# Authentication
+# Authentication: register + SMS verify + login
 # -----------------------------
 
 @app.route("/register", methods=["GET", "POST"])
@@ -345,36 +378,117 @@ def register():
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        email = request.form.get("email", "").strip().lower()
+        first_name = request.form.get("first_name", "").strip()
+        last_name = request.form.get("last_name", "").strip()
+        phone = normalize_phone(request.form.get("phone", ""))
         password = request.form.get("password", "")
         confirm_password = request.form.get("confirm_password", "")
         role = request.form.get("role", "student")
 
         error = None
 
-        if not username or not email or not password:
+        if not first_name or not last_name or not phone or not password:
             error = "All fields are required."
+        elif not valid_phone(phone):
+            error = "Enter a valid 10-digit phone number, e.g. 0244123456."
         elif password != confirm_password:
             error = "Passwords do not match."
+        elif len(password) < 6:
+            error = "Password must be at least 6 characters."
         elif role not in ["student", "manager"]:
             error = "Invalid account type."
-        elif User.query.filter_by(username=username).first():
-            error = "Username already exists."
-        elif User.query.filter_by(email=email).first():
-            error = "Email already exists."
+        elif User.query.filter_by(phone=phone).first():
+            error = "This phone number is already registered."
 
         if error:
             flash(error, "danger")
         else:
-            user = User(username=username, email=email, role=role)
-            user.set_password(password)
-            db.session.add(user)
-            db.session.commit()
-            flash("Account created successfully. You can now log in.", "success")
-            return redirect(url_for("login"))
+            code = f"{random.randint(0, 999999):06d}"
+
+            session["reg_data"] = {
+                "first_name": first_name,
+                "last_name": last_name,
+                "phone": phone,
+                "password_hash": generate_password_hash(password),
+                "role": role,
+            }
+            session["reg_code"] = code
+            session["reg_time"] = int(datetime.now().timestamp())
+
+            send_sms(phone, f"BrightAdel verification code: {code}")
+
+            flash("We sent a 6-digit verification code to your phone.", "info")
+            return redirect(url_for("verify"))
 
     return render_template("register.html")
+
+
+@app.route("/verify", methods=["GET", "POST"])
+def verify():
+    data = session.get("reg_data")
+
+    if not data:
+        return redirect(url_for("register"))
+
+    if request.method == "POST":
+        entered = request.form.get("code", "").strip()
+        age_minutes = (int(datetime.now().timestamp()) - session.get("reg_time", 0)) / 60
+
+        if age_minutes > 10:
+            flash("Code expired. Please resend a new code.", "warning")
+        elif entered == session.get("reg_code"):
+            phone = data["phone"]
+
+            if User.query.filter_by(phone=phone).first():
+                session.pop("reg_data", None)
+                session.pop("reg_code", None)
+                session.pop("reg_time", None)
+                flash("This phone number is already registered.", "danger")
+                return redirect(url_for("login"))
+
+            user = User(
+                username=f"{data['first_name']} {data['last_name']}",
+                first_name=data["first_name"],
+                last_name=data["last_name"],
+                phone=phone,
+                email=f"{phone}@brightadel.com",
+                role=data["role"],
+            )
+            user.password_hash = data["password_hash"]
+
+            db.session.add(user)
+            db.session.commit()
+
+            session.pop("reg_data", None)
+            session.pop("reg_code", None)
+            session.pop("reg_time", None)
+
+            flash("Phone verified! Account created. You can now log in.", "success")
+            return redirect(url_for("login"))
+        else:
+            flash("Incorrect code. Try again.", "danger")
+
+    return render_template(
+        "verify.html",
+        phone=data["phone"],
+        test_code=session.get("reg_code") if not SMS_API_KEY else None,
+    )
+
+
+@app.route("/verify/resend", methods=["POST"])
+def verify_resend():
+    data = session.get("reg_data")
+
+    if not data:
+        return redirect(url_for("register"))
+
+    code = f"{random.randint(0, 999999):06d}"
+    session["reg_code"] = code
+    session["reg_time"] = int(datetime.now().timestamp())
+    send_sms(data["phone"], f"BrightAdel verification code: {code}")
+
+    flash("A new code has been sent.", "info")
+    return redirect(url_for("verify"))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -383,15 +497,10 @@ def login():
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
-        identifier = request.form.get("identifier", "").strip()
+        phone = normalize_phone(request.form.get("phone", ""))
         password = request.form.get("password", "")
 
-        user = User.query.filter(
-            db.or_(
-                User.username == identifier,
-                User.email == identifier.lower(),
-            )
-        ).first()
+        user = User.query.filter_by(phone=phone).first()
 
         if user and user.check_password(password):
             if user.suspended:
@@ -401,7 +510,7 @@ def login():
                 flash(f"Welcome back, {user.username}!", "success")
                 return redirect(url_for("dashboard"))
         else:
-            flash("Invalid username/email or password.", "danger")
+            flash("Invalid phone number or password.", "danger")
 
     return render_template("login.html")
 
@@ -503,12 +612,11 @@ def booking_pay(booking_id):
             return redirect(url_for("booking_receipt", booking_id=booking.id))
 
         if PAYSTACK_SECRET_KEY:
-            # ---------- REAL PAYSTACK ----------
             callback_url = url_for("payment_callback", booking_id=booking.id, _external=True)
 
             payload = {
                 "email": current_user.email,
-                "amount": int(amount * 100),  # Paystack works in pesewas
+                "amount": int(amount * 100),
                 "callback_url": callback_url,
                 "metadata": {
                     "booking_id": booking.id,
@@ -536,7 +644,6 @@ def booking_pay(booking_id):
             session["pending_reference"] = data["data"]["reference"]
             return redirect(data["data"]["authorization_url"])
         else:
-            # ---------- SIMULATED TEST MODE ----------
             payment = Payment(
                 booking_id=booking.id,
                 amount=amount,
@@ -693,9 +800,13 @@ def manager_dashboard():
     bookings.sort(key=lambda b: b.created_at, reverse=True)
 
     hostel_ids = [h.id for h in hostels]
-    revenue = 0
+    gross_revenue = Decimal("0")
     if hostel_ids:
-        revenue = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).select_from(Payment).join(Booking).join(Room).filter(Room.hostel_id.in_(hostel_ids), Payment.status == "success").scalar()
+        value = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).select_from(Payment).join(Booking).join(Room).filter(Room.hostel_id.in_(hostel_ids), Payment.status == "success").scalar()
+        gross_revenue = Decimal(str(value))
+
+    platform_fee = money(gross_revenue * COMMISSION_RATE)
+    net_revenue = gross_revenue - platform_fee
 
     return render_template(
         "manager_dashboard.html",
@@ -703,7 +814,9 @@ def manager_dashboard():
         total_slots=total_slots,
         booked_slots=booked_slots,
         bookings=bookings,
-        revenue=revenue,
+        gross_revenue=gross_revenue,
+        platform_fee=platform_fee,
+        net_revenue=net_revenue,
     )
 
 
@@ -943,7 +1056,7 @@ def booking_checkout(booking_id):
 
 
 # -----------------------------
-# Admin: oversight
+# Admin: oversight + 2% commission
 # -----------------------------
 
 @app.route("/admin")
@@ -957,14 +1070,36 @@ def admin_dashboard():
         "bookings": Booking.query.count(),
     }
 
-    revenue = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).filter(Payment.status == "success").scalar()
+    total_processed = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).filter(Payment.status == "success").scalar()
+    total_processed = Decimal(str(total_processed))
+    commission = money(total_processed * COMMISSION_RATE)
+    managers_earned = total_processed - commission
+
+    manager_rows = []
+    for m in User.query.filter_by(role="manager").order_by(User.username).all():
+        hostel_ids = [h.id for h in m.hostels]
+        gross = Decimal("0")
+        if hostel_ids:
+            value = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).select_from(Payment).join(Booking).join(Room).filter(Room.hostel_id.in_(hostel_ids), Payment.status == "success").scalar()
+            gross = Decimal(str(value))
+        fee = money(gross * COMMISSION_RATE)
+        manager_rows.append({
+            "manager": m,
+            "hostels": len(hostel_ids),
+            "gross": gross,
+            "fee": fee,
+            "net": gross - fee,
+        })
 
     recent_bookings = Booking.query.order_by(Booking.created_at.desc()).limit(10).all()
 
     return render_template(
         "admin_dashboard.html",
         stats=stats,
-        revenue=revenue,
+        total_processed=total_processed,
+        commission=commission,
+        managers_earned=managers_earned,
+        manager_rows=manager_rows,
         recent_bookings=recent_bookings,
     )
 
@@ -1012,7 +1147,7 @@ def admin_user_delete(user_id):
 
 
 # -----------------------------
-# Seed data
+# Seed: backend admin ONLY (no demo data)
 # -----------------------------
 
 @app.cli.command("seed")
@@ -1020,56 +1155,20 @@ def seed_db():
     db.create_all()
 
     if User.query.count() == 0:
-        admin = User(username="admin", email="admin@brightadel.com", role="admin")
+        admin = User(
+            username="Platform Admin",
+            first_name="Platform",
+            last_name="Admin",
+            phone="0200000000",
+            email="admin@brightadel.com",
+            role="admin",
+        )
         admin.set_password("admin123")
-
-        manager = User(username="manager", email="manager@brightadel.com", role="manager")
-        manager.set_password("manager123")
-
-        student = User(username="student", email="student@brightadel.com", role="student")
-        student.set_password("student123")
-
-        db.session.add_all([admin, manager, student])
-        db.session.flush()
-
-        hostel = Hostel(
-            name="BrightAdel Hostel",
-            location="Ayensu",
-            paid_amenities="water,electricity",
-            has_ac=True,
-            manager_id=manager.id,
-        )
-        db.session.add(hostel)
-        db.session.flush()
-
-        room_one = Room(hostel_id=hostel.id, room_type="1 in a room", quantity=2, capacity=1, price_per_year=Decimal("4500.00"))
-        room_two = Room(hostel_id=hostel.id, room_type="2 in a room", quantity=3, capacity=2, price_per_year=Decimal("3000.00"))
-        room_three = Room(hostel_id=hostel.id, room_type="4 in a room", quantity=2, capacity=4, price_per_year=Decimal("2000.00"))
-        db.session.add_all([room_one, room_two, room_three])
-        db.session.flush()
-
-        booking = Booking(
-            student_id=student.id,
-            room_id=room_two.id,
-            status="confirmed",
-            total_amount=room_two.price_per_year,
-        )
-        db.session.add(booking)
-        db.session.flush()
-
-        payment = Payment(
-            booking_id=booking.id,
-            amount=Decimal("1500.00"),
-            reference="BA-SEED-0001",
-        )
-        db.session.add(payment)
-
+        db.session.add(admin)
         db.session.commit()
 
-        print("Database seeded successfully.")
-        print("admin / admin123   (overseer)")
-        print("manager / manager123   (adds hostels & rooms)")
-        print("student / student123   (books & pays)")
+        print("Database ready.")
+        print("Admin login -> phone: 0200000000 | password: admin123")
 
 
 with app.app_context():
