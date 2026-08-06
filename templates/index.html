@@ -150,9 +150,8 @@
                         {% if card.hostel.has_ac %} • ❄️ AC included{% endif %}
                     </p>
 
-                    <p class="mb-2 small">
-                        👤 {{ card.hostel.manager.username }} •
-                        📞 <a href="tel:{{ card.hostel.manager.phone }}">{{ card.hostel.manager.phone }}</a>
+                    <p class="mb-2 small text-muted">
+                        👤 Managed by {{ card.hostel.manager.username }}
                     </p>
 
                     <p class="mb-2">
