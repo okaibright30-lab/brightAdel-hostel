@@ -1822,6 +1822,10 @@ def admin_user_delete(user_id):
 # Seed: backend admin ONLY
 # -----------------------------
 
+# -----------------------------
+# Seed: backend admin ONLY
+# -----------------------------
+
 @app.cli.command("seed")
 def seed_db():
     db.create_all()
@@ -1832,8 +1836,8 @@ def seed_db():
             username="Platform Admin",
             first_name="Platform",
             last_name="Admin",
-            phone="0200000000",
-            email="admin@brightadel.com",
+            phone="0547421221",
+            email="Rockselorm2003@gmail.com",
             role="admin",
         )
         admin.set_password("admin123")
@@ -1841,7 +1845,7 @@ def seed_db():
         db.session.commit()
 
         print("Database ready.")
-        print("Admin login -> phone: 0200000000 | password: admin123")
+        print("Admin login -> phone: 0547421221 | password: admin123")
 
 
 with app.app_context():
