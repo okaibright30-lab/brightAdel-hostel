@@ -8,7 +8,9 @@
     <a href="{{ url_for('index') }}" class="text-decoration-none">&larr; Back to hostels</a>
     <h1 class="h3 mt-2 mb-1">{{ hostel.name }}</h1>
     <p class="text-muted mb-1">
-        📍 {{ hostel.location }} • Managed by {{ hostel.manager.username }}
+        📍 {{ hostel.location }} •
+        Managed by {{ hostel.manager.username }} •
+        📞 <a href="tel:{{ hostel.manager.phone }}">{{ hostel.manager.phone }}</a>
         {% if hostel.has_ac %} • <span class="badge text-bg-info">❄️ AC included</span>{% endif %}
     </p>
 

@@ -75,6 +75,7 @@
         <thead>
             <tr>
                 <th>Student</th>
+                <th>Phone</th>
                 <th>Hostel</th>
                 <th>Room Type</th>
                 <th>Paid</th>
@@ -86,6 +87,7 @@
             {% for booking in bookings %}
                 <tr>
                     <td>{{ booking.student.username }}</td>
+                    <td><a href="tel:{{ booking.student.phone }}">{{ booking.student.phone }}</a></td>
                     <td>{{ booking.room.hostel.name }}</td>
                     <td>{{ booking.room.room_type }}</td>
                     <td>GH₵ {{ "%.2f"|format(booking.paid_amount()) }} / {{ "%.2f"|format(booking.total_amount) }}</td>
@@ -119,7 +121,7 @@
                     </td>
                 </tr>
             {% else %}
-                <tr><td colspan="6">No bookings yet.</td></tr>
+                <tr><td colspan="7">No bookings yet.</td></tr>
             {% endfor %}
         </tbody>
     </table>

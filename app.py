@@ -53,6 +53,9 @@ login_manager.login_message_category = "warning"
 # CONFIGURATION
 # -----------------------------
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+
+# SMS Verification. Leave empty to stay in demo mode.
+# When deploying, paste your mNotify/Hubtel/Arkesel API key here.
 SMS_API_KEY = os.environ.get("SMS_API_KEY", "")
 
 
@@ -94,6 +97,7 @@ def send_sms(phone, message):
     if not SMS_API_KEY:
         print(f"[SMS TEST MODE] To {phone}: {message}")
         return True
+    # Real SMS provider API call will be added here during deployment.
     return True
 
 
@@ -388,7 +392,7 @@ def hostel_detail(hostel_id):
 
 
 # -----------------------------
-# Authentication
+# Authentication + profile + password reset
 # -----------------------------
 
 @app.route("/register", methods=["GET", "POST"])
@@ -474,7 +478,7 @@ def register():
 
         send_sms(phone, f"BrightAdel verification code: {code}")
 
-        flash("We sent a 6-digit verification code to your phone.", "info")
+        flash("We sent a 6-digit verification code to your phone via SMS.", "info")
         return redirect(url_for("verify"))
 
     return render_template("register.html", locations=HOSTEL_LOCATIONS)
@@ -544,7 +548,7 @@ def verify_resend():
     session["reg_time"] = int(datetime.now().timestamp())
     send_sms(data["phone"], f"BrightAdel verification code: {code}")
 
-    flash("A new code has been sent.", "info")
+    flash("A new SMS code has been sent.", "info")
     return redirect(url_for("verify"))
 
 
@@ -577,6 +581,68 @@ def login():
     return render_template("login.html")
 
 
+@app.route("/forgot", methods=["GET", "POST"])
+def forgot():
+    if request.method == "POST":
+        phone = normalize_phone(request.form.get("phone", ""))
+        user = User.query.filter_by(phone=phone).first()
+
+        if not user:
+            flash("No account found with this phone number.", "danger")
+        else:
+            code = f"{random.randint(0, 999999):06d}"
+            session["forgot_phone"] = phone
+            session["forgot_code"] = code
+            session["forgot_time"] = int(datetime.now().timestamp())
+            send_sms(phone, f"BrightAdel password reset code: {code}")
+            flash("We sent a 6-digit reset code to your phone.", "info")
+            return redirect(url_for("reset"))
+
+    return render_template("forgot.html")
+
+
+@app.route("/reset", methods=["GET", "POST"])
+def reset():
+    phone = session.get("forgot_phone")
+
+    if not phone:
+        return redirect(url_for("forgot"))
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        age_minutes = (int(datetime.now().timestamp()) - session.get("forgot_time", 0)) / 60
+
+        user = User.query.filter_by(phone=phone).first()
+
+        if age_minutes > 10:
+            flash("Code expired. Please request a new one.", "warning")
+            return redirect(url_for("forgot"))
+        elif code != session.get("forgot_code"):
+            flash("Incorrect code.", "danger")
+        elif not user:
+            flash("Account not found.", "danger")
+        elif len(new_password) < 6:
+            flash("Password must be at least 6 characters.", "danger")
+        elif new_password != confirm_password:
+            flash("Passwords do not match.", "danger")
+        else:
+            user.set_password(new_password)
+            db.session.commit()
+            session.pop("forgot_phone", None)
+            session.pop("forgot_code", None)
+            session.pop("forgot_time", None)
+            flash("Password reset successful. You can now log in.", "success")
+            return redirect(url_for("login"))
+
+    return render_template(
+        "reset.html",
+        phone=phone,
+        test_code=session.get("forgot_code") if not SMS_API_KEY else None,
+    )
+
+
 @app.route("/logout")
 @login_required
 def logout():
@@ -593,6 +659,46 @@ def dashboard():
     if current_user.role == "manager":
         return redirect(url_for("manager_dashboard"))
     return redirect(url_for("my_bookings"))
+
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    if request.method == "POST":
+        action = request.form.get("action", "update_info")
+
+        if action == "update_info":
+            first_name = request.form.get("first_name", "").strip()
+            last_name = request.form.get("last_name", "").strip()
+
+            if not first_name or not last_name:
+                flash("Names cannot be empty.", "danger")
+            else:
+                current_user.first_name = first_name
+                current_user.last_name = last_name
+                current_user.username = f"{first_name} {last_name}"
+                db.session.commit()
+                flash("Profile updated successfully.", "success")
+
+        elif action == "change_password":
+            current_password = request.form.get("current_password", "")
+            new_password = request.form.get("new_password", "")
+            confirm_password = request.form.get("confirm_password", "")
+
+            if not current_user.check_password(current_password):
+                flash("Current password is incorrect.", "danger")
+            elif len(new_password) < 6:
+                flash("New password must be at least 6 characters.", "danger")
+            elif new_password != confirm_password:
+                flash("New passwords do not match.", "danger")
+            else:
+                current_user.set_password(new_password)
+                db.session.commit()
+                flash("Password changed successfully.", "success")
+
+        return redirect(url_for("profile"))
+
+    return render_template("profile.html", user=current_user)
 
 
 # -----------------------------
@@ -1254,7 +1360,6 @@ def admin_application_review(app_id):
             db.session.commit()
             flash(f"{user.username} approved as a manager. They can now log in.", "success")
     elif decision == "reject":
-        # Delete ALL submitted information (record + document file) to free space
         path = os.path.join(app.config["UPLOAD_FOLDER"], application.doc_filename)
         if os.path.exists(path):
             os.remove(path)

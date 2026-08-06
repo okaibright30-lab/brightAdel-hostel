@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Reset Password | BrightAdel{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card card-shadow">
+            <div class="card-body p-4 text-center">
+
+                <h1 class="h4 mb-2">Reset Password</h1>
+                <p class="text-muted mb-4">
+                    We sent a 6-digit code to <strong>{{ phone }}</strong>
+                </p>
+
+                {% if test_code %}
+                    <div class="alert alert-info small">
+                        <strong>Demo mode (SMS gateway pending):</strong> your code is <strong>{{ test_code }}</strong>
+                    </div>
+                {% endif %}
+
+                <form method="post">
+                    <input
+                        type="text"
+                        class="form-control form-control-lg text-center mb-3"
+                        name="code"
+                        placeholder="••••••"
+                        maxlength="6"
+                        required
+                        style="letter-spacing: 8px;"
+                    >
+                    <input type="password" class="form-control mb-2" name="new_password" placeholder="New password" required>
+                    <input type="password" class="form-control mb-3" name="confirm_password" placeholder="Confirm new password" required>
+                    <button class="btn btn-primary w-100">Reset Password</button>
+                </form>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

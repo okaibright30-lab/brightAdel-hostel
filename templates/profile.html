@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Profile | BrightAdel{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+
+        <div class="card card-shadow mb-4">
+            <div class="card-body p-4">
+
+                <h1 class="h4 mb-2">My Profile</h1>
+
+                <p class="mb-4">
+                    <span class="badge text-bg-{% if user.role == 'admin' %}danger{% elif user.role == 'manager' %}info{% else %}success{% endif %}">
+                        {{ user.role }}
+                    </span>
+                    <span class="text-muted">• Joined {{ user.created_at.strftime("%d %b %Y") }}</span>
+                </p>
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <p class="mb-1 text-muted">Full Name</p>
+                        <p class="fw-bold">{{ user.username }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1 text-muted">Phone Number</p>
+                        <p class="fw-bold">{{ user.phone }}</p>
+                    </div>
+                </div>
+
+                <h2 class="h6 mb-3">✏️ Edit My Names</h2>
+                <form method="post">
+                    <input type="hidden" name="action" value="update_info">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">First Name</label>
+                            <input type="text" class="form-control" name="first_name" value="{{ user.first_name }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Last Name</label>
+                            <input type="text" class="form-control" name="last_name" value="{{ user.last_name }}" required>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary mt-3">Save Changes</button>
+                </form>
+
+            </div>
+        </div>
+
+        <div class="card card-shadow">
+            <div class="card-body p-4">
+
+                <h2 class="h5 mb-3">🔑 Change Password</h2>
+
+                <form method="post">
+                    <input type="hidden" name="action" value="change_password">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Current Password</label>
+                            <input type="password" class="form-control" name="current_password" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">New Password</label>
+                            <input type="password" class="form-control" name="new_password" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Confirm New Password</label>
+                            <input type="password" class="form-control" name="confirm_password" required>
+                        </div>
+                    </div>
+                    <button class="btn btn-gold mt-3">Change Password</button>
+                </form>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

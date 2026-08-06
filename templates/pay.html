@@ -34,16 +34,18 @@
                         Fully paid! <a href="{{ url_for('booking_receipt', booking_id=booking.id) }}">View your receipt</a>.
                     </div>
                 {% else %}
-                    <form method="post">
+                    <form method="post" id="payForm">
+                        <input type="hidden" name="pay_option" id="payOption" value="">
+
                         {% if booking.paid_amount() == 0 %}
-                            <button name="pay_option" value="half" class="btn btn-success w-100 btn-lg mb-2">
+                            <button type="button" data-option="half" class="btn btn-success w-100 btn-lg mb-2">
                                 Pay 50% Deposit — GH₵ {{ "%.2f"|format(booking.half_fee()) }} (confirms your slot)
                             </button>
-                            <button name="pay_option" value="full" class="btn btn-outline-success w-100 btn-lg">
+                            <button type="button" data-option="full" class="btn btn-outline-success w-100 btn-lg">
                                 Pay Full — GH₵ {{ "%.2f"|format(booking.total_amount) }}
                             </button>
                         {% else %}
-                            <button name="pay_option" value="balance" class="btn btn-success w-100 btn-lg">
+                            <button type="button" data-option="balance" class="btn btn-success w-100 btn-lg">
                                 Pay Remaining Balance — GH₵ {{ "%.2f"|format(booking.balance()) }}
                             </button>
                         {% endif %}
@@ -56,6 +58,20 @@
                             Test mode — no real money moves. Add your Paystack key to go live.
                         {% endif %}
                     </p>
+
+                    <script>
+                        const payForm = document.getElementById('payForm');
+                        payForm.querySelectorAll('button[data-option]').forEach(function (btn) {
+                            btn.addEventListener('click', function () {
+                                document.getElementById('payOption').value = btn.dataset.option;
+                                payForm.querySelectorAll('button').forEach(function (b) {
+                                    b.disabled = true;
+                                    b.textContent = 'Processing…';
+                                });
+                                payForm.submit();
+                            });
+                        });
+                    </script>
                 {% endif %}
 
             </div>
