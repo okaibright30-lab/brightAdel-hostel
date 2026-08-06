@@ -13,6 +13,10 @@ Manager
     Phone: 0531402674
     Password: Selorm11
 
+    Name: Amevor Selorm
+    Phone: 0200011111
+    Password: Kekelikofi
+
     cd ~/Desktop/brightadel-hostel
     source venv/Scripts/activate
     bash start.sh

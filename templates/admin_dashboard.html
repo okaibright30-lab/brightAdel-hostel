@@ -50,7 +50,7 @@
     <div class="col-md-2">
         <div class="card card-shadow h-100">
             <div class="card-body">
-                <h2 class="h6 text-muted">Total Processed</h2>
+                <h2 class="h6 text-muted">Hostel Fees Paid</h2>
                 <p class="h5 mb-0">GH₵ {{ "%.2f"|format(total_processed) }}</p>
             </div>
         </div>
@@ -61,33 +61,33 @@
     <div class="col-md-4">
         <div class="card card-shadow h-100" style="border-left: 5px solid #ffb81c;">
             <div class="card-body">
-                <h2 class="h6 text-muted">💰 Your Commission (2%)</h2>
-                <p class="h2 mb-0 text-gold">GH₵ {{ "%.2f"|format(commission) }}</p>
-                <small class="text-muted">This is BrightAdel's revenue</small>
+                <h2 class="h6 text-muted">💰 Your Service Earnings (GH₵ 20 / payment)</h2>
+                <p class="h2 mb-0 text-gold">GH₵ {{ "%.2f"|format(service_earnings) }}</p>
+                <small class="text-muted">BrightAdel's profit</small>
             </div>
         </div>
     </div>
     <div class="col-md-4">
         <div class="card card-shadow h-100">
             <div class="card-body">
-                <h2 class="h6 text-muted">Managers Earned (98%)</h2>
-                <p class="h2 mb-0 price-text">GH₵ {{ "%.2f"|format(managers_earned) }}</p>
-                <small class="text-muted">Paid out to hostel managers</small>
+                <h2 class="h6 text-muted">Gateway Fees Collected (2%)</h2>
+                <p class="h2 mb-0 price-text">GH₵ {{ "%.2f"|format(gateway_collected) }}</p>
+                <small class="text-muted">Covers the Paystack charge</small>
             </div>
         </div>
     </div>
     <div class="col-md-4">
         <div class="card card-shadow h-100">
             <div class="card-body">
-                <h2 class="h6 text-muted">Total Money Processed</h2>
-                <p class="h2 mb-0">GH₵ {{ "%.2f"|format(total_processed) }}</p>
-                <small class="text-muted">All successful payments</small>
+                <h2 class="h6 text-muted">Managers Receive</h2>
+                <p class="h2 mb-0">100%</p>
+                <small class="text-muted">of every hostel fee — no commission taken</small>
             </div>
         </div>
     </div>
 </div>
 
-<h2 class="h5 mb-3">Manager Earnings Breakdown</h2>
+<h2 class="h5 mb-3">Manager Collections (100% theirs)</h2>
 <div class="table-responsive mb-5">
     <table class="table table-hover align-middle">
         <thead>
@@ -95,8 +95,6 @@
                 <th>Manager</th>
                 <th>Hostels</th>
                 <th>Gross Collected</th>
-                <th>Your 2% Commission</th>
-                <th>Manager Net</th>
             </tr>
         </thead>
         <tbody>
@@ -105,11 +103,9 @@
                     <td>{{ row.manager.username }}</td>
                     <td>{{ row.hostels }}</td>
                     <td>GH₵ {{ "%.2f"|format(row.gross) }}</td>
-                    <td class="text-gold fw-bold">GH₵ {{ "%.2f"|format(row.fee) }}</td>
-                    <td>GH₵ {{ "%.2f"|format(row.net) }}</td>
                 </tr>
             {% else %}
-                <tr><td colspan="5">No managers yet.</td></tr>
+                <tr><td colspan="3">No managers yet.</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -124,7 +120,6 @@
                 <th>Hostel</th>
                 <th>Room Type</th>
                 <th>Paid</th>
-                <th>Your 2%</th>
                 <th>Status</th>
             </tr>
         </thead>
@@ -134,12 +129,11 @@
                     <td>{{ booking.student.username }}</td>
                     <td>{{ booking.room.hostel.name }}</td>
                     <td>{{ booking.room.room_type }}</td>
-                    <td>GH₵ {{ "%.2f"|format(booking.paid_amount()) }}</td>
-                    <td class="text-gold fw-bold">GH₵ {{ "%.2f"|format(booking.commission()) }}</td>
+                    <td>GH₵ {{ "%.2f"|format(booking.paid_amount()) }} / {{ "%.2f"|format(booking.total_amount) }}</td>
                     <td><span class="badge text-bg-info">{{ booking.status }}</span></td>
                 </tr>
             {% else %}
-                <tr><td colspan="6">No bookings yet.</td></tr>
+                <tr><td colspan="5">No bookings yet.</td></tr>
             {% endfor %}
         </tbody>
     </table>

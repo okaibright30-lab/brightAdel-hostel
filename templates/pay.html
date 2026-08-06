@@ -4,6 +4,13 @@
 
 {% block content %}
 
+{% set half_base = booking.half_fee() %}
+{% set half_charge = half_base + half_base * 2 / 100 + 20 %}
+{% set full_base = booking.total_amount %}
+{% set full_charge = full_base + full_base * 2 / 100 + 20 %}
+{% set bal_base = booking.balance() %}
+{% set bal_charge = bal_base + bal_base * 2 / 100 + 20 %}
+
 <div class="row justify-content-center">
     <div class="col-lg-6">
         <div class="card card-shadow">
@@ -11,7 +18,7 @@
 
                 <h1 class="h4 mb-4">Complete Payment</h1>
 
-                <ul class="list-group mb-4">
+                <ul class="list-group mb-3">
                     <li class="list-group-item d-flex justify-content-between">
                         <span>Hostel</span><strong>{{ booking.room.hostel.name }} ({{ booking.room.hostel.location }})</strong>
                     </li>
@@ -29,6 +36,11 @@
                     </li>
                 </ul>
 
+                <div class="alert alert-info small mb-4">
+                    💡 Per payment, students add: <strong>GH₵ 20.00</strong> service fee + <strong>2%</strong> gateway fee.
+                    Managers receive <strong>100%</strong> of the hostel fee.
+                </div>
+
                 {% if booking.balance() <= 0 %}
                     <div class="alert alert-success">
                         Fully paid! <a href="{{ url_for('booking_receipt', booking_id=booking.id) }}">View your receipt</a>.
@@ -39,14 +51,17 @@
 
                         {% if booking.paid_amount() == 0 %}
                             <button type="button" data-option="half" class="btn btn-success w-100 btn-lg mb-2">
-                                Pay 50% Deposit — GH₵ {{ "%.2f"|format(booking.half_fee()) }} (confirms your slot)
+                                Pay 50% Deposit — GH₵ {{ "%.2f"|format(half_charge) }}
+                                <small>({{ "%.2f"|format(half_base) }} + fees)</small>
                             </button>
                             <button type="button" data-option="full" class="btn btn-outline-success w-100 btn-lg">
-                                Pay Full — GH₵ {{ "%.2f"|format(booking.total_amount) }}
+                                Pay Full — GH₵ {{ "%.2f"|format(full_charge) }}
+                                <small>({{ "%.2f"|format(full_base) }} + fees)</small>
                             </button>
                         {% else %}
                             <button type="button" data-option="balance" class="btn btn-success w-100 btn-lg">
-                                Pay Remaining Balance — GH₵ {{ "%.2f"|format(booking.balance()) }}
+                                Pay Remaining Balance — GH₵ {{ "%.2f"|format(bal_charge) }}
+                                <small>({{ "%.2f"|format(bal_base) }} + fees)</small>
                             </button>
                         {% endif %}
                     </form>

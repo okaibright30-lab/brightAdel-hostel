@@ -55,7 +55,6 @@ login_manager.login_message_category = "warning"
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
 
 # SMS Verification. Leave empty to stay in demo mode.
-# When deploying, paste your mNotify/Hubtel/Arkesel API key here.
 SMS_API_KEY = os.environ.get("SMS_API_KEY", "")
 
 
@@ -71,7 +70,16 @@ ROOM_TYPE_CAPACITY = {
 BOOKING_STATUSES = ["pending", "confirmed", "checked_in", "checkout_requested", "checked_out", "cancelled"]
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf"}
 
-COMMISSION_RATE = Decimal("0.02")
+# -----------------------------
+# FEE MODEL
+# Managers receive 100% of the hostel fee.
+# Students pay, ON TOP of every payment:
+#   1) PLATFORM_FEE  = GH₵ 20 standard service fee (BrightAdel profit)
+#   2) 2% gateway fee = covers the Paystack charge
+# Future extra income = advertising.
+# -----------------------------
+PLATFORM_FEE = Decimal("20.00")
+PROCESSING_FEE_RATE = Decimal("0.02")
 
 
 def utcnow():
@@ -80,6 +88,24 @@ def utcnow():
 
 def money(value):
     return Decimal(str(value)).quantize(Decimal("0.01"))
+
+
+def processing_fee(amount):
+    return money(Decimal(str(amount)) * PROCESSING_FEE_RATE)
+
+
+def extra_fees(amount):
+    """Fees added on top of the hostel-fee portion: GH₵20 + 2%."""
+    return money(PLATFORM_FEE + processing_fee(amount))
+
+
+def split_charge(charge):
+    """Given the total charged amount, return the base hostel-fee portion."""
+    base = money((Decimal(str(charge)) - PLATFORM_FEE) / (Decimal("1") + PROCESSING_FEE_RATE))
+    for candidate in (base, base + Decimal("0.01"), base - Decimal("0.01")):
+        if candidate >= 0 and candidate + extra_fees(candidate) == money(charge):
+            return candidate
+    return base
 
 
 def normalize_phone(value):
@@ -97,7 +123,6 @@ def send_sms(phone, message):
     if not SMS_API_KEY:
         print(f"[SMS TEST MODE] To {phone}: {message}")
         return True
-    # Real SMS provider API call will be added here during deployment.
     return True
 
 
@@ -233,9 +258,6 @@ class Booking(db.Model):
 
     def half_fee(self):
         return Decimal(str(self.total_amount)) / Decimal("2")
-
-    def commission(self):
-        return money(self.paid_amount() * COMMISSION_RATE)
 
 
 class Payment(db.Model):
@@ -772,12 +794,15 @@ def booking_pay(booking_id):
             flash("Nothing left to pay. Your booking is fully paid.", "info")
             return redirect(url_for("booking_receipt", booking_id=booking.id))
 
+        fee = extra_fees(amount)
+        charge = money(amount + fee)
+
         if PAYSTACK_SECRET_KEY:
             callback_url = url_for("payment_callback", booking_id=booking.id, _external=True)
 
             payload = {
                 "email": current_user.email,
-                "amount": int(amount * 100),
+                "amount": int(charge * 100),
                 "callback_url": callback_url,
                 "metadata": {
                     "booking_id": booking.id,
@@ -803,6 +828,11 @@ def booking_pay(booking_id):
                 return redirect(url_for("booking_pay", booking_id=booking.id))
 
             session["pending_reference"] = data["data"]["reference"]
+            session["pay_plan"] = {
+                "booking": booking.id,
+                "base": str(amount),
+                "charge": str(charge),
+            }
             return redirect(data["data"]["authorization_url"])
         else:
             payment = Payment(
@@ -865,18 +895,25 @@ def payment_callback(booking_id):
         return redirect(url_for("my_bookings"))
 
     if data.get("status") and data["data"]["status"] == "success":
-        amount = Decimal(str(data["data"]["amount"])) / Decimal("100")
+        charged = Decimal(str(data["data"]["amount"])) / Decimal("100")
+
+        plan = session.pop("pay_plan", None)
+        base = None
+        if plan and plan.get("booking") == booking.id and abs(Decimal(plan["charge"]) - charged) < Decimal("0.02"):
+            base = Decimal(plan["base"])
+        else:
+            base = split_charge(charged)
 
         payment = Payment(
             booking_id=booking.id,
-            amount=amount,
+            amount=base,
             method="paystack",
             status="success",
             reference=reference,
         )
         db.session.add(payment)
 
-        if booking.status == "pending" and (booking.paid_amount() + amount) >= booking.half_fee():
+        if booking.status == "pending" and (booking.paid_amount() + base) >= booking.half_fee():
             booking.status = "confirmed"
 
         db.session.commit()
@@ -1003,6 +1040,7 @@ def manager_dashboard():
         hostels=hostels,
         total_slots=total_slots,
         booked_slots=booked_slots,
+        available_slots=total_slots - booked_slots,
         bookings=bookings,
     )
 
@@ -1279,7 +1317,7 @@ def booking_request_checkout(booking_id):
 
 
 # -----------------------------
-# Admin: oversight + commission + applications
+# Admin: oversight + applications
 # -----------------------------
 
 @app.route("/admin")
@@ -1295,8 +1333,10 @@ def admin_dashboard():
 
     total_processed = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).filter(Payment.status == "success").scalar()
     total_processed = Decimal(str(total_processed))
-    commission = money(total_processed * COMMISSION_RATE)
-    managers_earned = total_processed - commission
+
+    payments_count = Payment.query.filter_by(status="success").count()
+    service_earnings = money(payments_count * PLATFORM_FEE)
+    gateway_collected = money(total_processed * PROCESSING_FEE_RATE)
 
     manager_rows = []
     for m in User.query.filter_by(role="manager").order_by(User.username).all():
@@ -1305,13 +1345,10 @@ def admin_dashboard():
         if hostel_ids:
             value = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).select_from(Payment).join(Booking).join(Room).filter(Room.hostel_id.in_(hostel_ids), Payment.status == "success").scalar()
             gross = Decimal(str(value))
-        fee = money(gross * COMMISSION_RATE)
         manager_rows.append({
             "manager": m,
             "hostels": len(hostel_ids),
             "gross": gross,
-            "fee": fee,
-            "net": gross - fee,
         })
 
     recent_bookings = Booking.query.order_by(Booking.created_at.desc()).limit(10).all()
@@ -1320,8 +1357,8 @@ def admin_dashboard():
         "admin_dashboard.html",
         stats=stats,
         total_processed=total_processed,
-        commission=commission,
-        managers_earned=managers_earned,
+        service_earnings=service_earnings,
+        gateway_collected=gateway_collected,
         manager_rows=manager_rows,
         recent_bookings=recent_bookings,
     )

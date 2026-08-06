@@ -4,6 +4,11 @@
 
 {% block content %}
 
+{% set pays_count = booking.payments|length %}
+{% set service_fees = 20 * pays_count %}
+{% set gateway_fees = booking.paid_amount() * 2 / 100 %}
+{% set total_charged = booking.paid_amount() + service_fees + gateway_fees %}
+
 <div class="row justify-content-center">
     <div class="col-lg-7">
 
@@ -52,7 +57,7 @@
                             <th>Payment Ref</th>
                             <th>Date</th>
                             <th>Method</th>
-                            <th class="text-end">Amount</th>
+                            <th class="text-end">Hostel Portion</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -67,16 +72,24 @@
                             <tr><td colspan="4">No payments yet.</td></tr>
                         {% endfor %}
                         <tr>
-                            <td colspan="3" class="text-end fw-bold">Total Paid</td>
+                            <td colspan="3" class="text-end fw-bold">Hostel Fee Paid (goes to manager)</td>
                             <td class="text-end fw-bold">GH₵ {{ "%.2f"|format(booking.paid_amount()) }}</td>
                         </tr>
                         <tr>
-                            <td colspan="3" class="text-end fw-bold">Balance</td>
-                            <td class="text-end fw-bold">GH₵ {{ "%.2f"|format(booking.balance()) }}</td>
+                            <td colspan="3" class="text-end">Service fee (GH₵ 20 × {{ pays_count }} payment(s))</td>
+                            <td class="text-end">GH₵ {{ "%.2f"|format(service_fees) }}</td>
                         </tr>
                         <tr>
-                            <td colspan="3" class="text-end fw-bold fs-5">Total Fee</td>
-                            <td class="text-end fw-bold fs-5">GH₵ {{ "%.2f"|format(booking.total_amount) }}</td>
+                            <td colspan="3" class="text-end">Gateway fee (2%)</td>
+                            <td class="text-end">GH₵ {{ "%.2f"|format(gateway_fees) }}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="3" class="text-end">Balance (hostel fee)</td>
+                            <td class="text-end">GH₵ {{ "%.2f"|format(booking.balance()) }}</td>
+                        </tr>
+                        <tr>
+                            <td colspan="3" class="text-end fw-bold fs-5">Total Charged</td>
+                            <td class="text-end fw-bold fs-5">GH₵ {{ "%.2f"|format(total_charged) }}</td>
                         </tr>
                     </tbody>
                 </table>
