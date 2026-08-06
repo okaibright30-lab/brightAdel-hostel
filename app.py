@@ -53,8 +53,6 @@ login_manager.login_message_category = "warning"
 # CONFIGURATION
 # -----------------------------
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
-
-# SMS Verification. Leave empty to stay in demo mode.
 SMS_API_KEY = os.environ.get("SMS_API_KEY", "")
 
 
@@ -70,14 +68,7 @@ ROOM_TYPE_CAPACITY = {
 BOOKING_STATUSES = ["pending", "confirmed", "checked_in", "checkout_requested", "checked_out", "cancelled"]
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf"}
 
-# -----------------------------
-# FEE MODEL
-# Managers receive 100% of the hostel fee.
-# Students pay, ON TOP of every payment:
-#   1) PLATFORM_FEE  = GH₵ 20 standard service fee (BrightAdel profit)
-#   2) 2% gateway fee = covers the Paystack charge
-# Future extra income = advertising.
-# -----------------------------
+# FEE MODEL: managers get 100%; students add GH₵20 service fee + 2% gateway fee.
 PLATFORM_FEE = Decimal("20.00")
 PROCESSING_FEE_RATE = Decimal("0.02")
 
@@ -95,12 +86,10 @@ def processing_fee(amount):
 
 
 def extra_fees(amount):
-    """Fees added on top of the hostel-fee portion: GH₵20 + 2%."""
     return money(PLATFORM_FEE + processing_fee(amount))
 
 
 def split_charge(charge):
-    """Given the total charged amount, return the base hostel-fee portion."""
     base = money((Decimal(str(charge)) - PLATFORM_FEE) / (Decimal("1") + PROCESSING_FEE_RATE))
     for candidate in (base, base + Decimal("0.01"), base - Decimal("0.01")):
         if candidate >= 0 and candidate + extra_fees(candidate) == money(charge):
@@ -182,6 +171,8 @@ class Hostel(db.Model):
     location = db.Column(db.String(50), nullable=False)
     paid_amenities = db.Column(db.String(200), nullable=True, default="")
     has_ac = db.Column(db.Boolean, default=False, nullable=False)
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
     manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow)
 
@@ -191,6 +182,10 @@ class Hostel(db.Model):
     @property
     def paid_amenities_list(self):
         return [a for a in (self.paid_amenities or "").split(",") if a]
+
+    @property
+    def has_map(self):
+        return self.latitude is not None and self.longitude is not None
 
 
 class HostelPhoto(db.Model):
@@ -300,6 +295,43 @@ def manager_owns_hostel(hostel):
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def parse_coordinates(lat_raw, lng_raw):
+    """Returns (latitude, longitude, error_message)."""
+    lat_raw = (lat_raw or "").strip()
+    lng_raw = (lng_raw or "").strip()
+
+    if not lat_raw and not lng_raw:
+        return None, None, None
+
+    try:
+        latitude = float(lat_raw)
+        longitude = float(lng_raw)
+        if not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+            raise ValueError
+        return latitude, longitude, None
+    except (ValueError, TypeError):
+        return None, None, "Coordinates look invalid. Use the GPS button or leave both empty."
+
+
+# -----------------------------
+# Database auto-upgrade (adds new columns without losing data)
+# -----------------------------
+
+def upgrade_database():
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+
+    if "hostels" in inspector.get_table_names():
+        cols = [c["name"] for c in inspector.get_columns("hostels")]
+        with db.engine.connect() as conn:
+            if "latitude" not in cols:
+                conn.execute(text("ALTER TABLE hostels ADD COLUMN latitude FLOAT"))
+            if "longitude" not in cols:
+                conn.execute(text("ALTER TABLE hostels ADD COLUMN longitude FLOAT"))
+            conn.commit()
 
 
 # -----------------------------
@@ -1089,17 +1121,25 @@ def hostel_new():
         location = request.form.get("location", "")
         paid_amenities = request.form.getlist("paid_amenities")
         has_ac = request.form.get("has_ac") == "on"
+        latitude, longitude, coord_error = parse_coordinates(
+            request.form.get("latitude"),
+            request.form.get("longitude"),
+        )
 
         if not name:
             flash("Hostel name is required.", "danger")
         elif location not in HOSTEL_LOCATIONS:
             flash("Please choose a valid location.", "danger")
+        elif coord_error:
+            flash(coord_error, "danger")
         else:
             hostel = Hostel(
                 name=name,
                 location=location,
                 paid_amenities=",".join([a for a in paid_amenities if a in AMENITY_OPTIONS]),
                 has_ac=has_ac,
+                latitude=latitude,
+                longitude=longitude,
                 manager_id=current_user.id,
             )
             db.session.add(hostel)
@@ -1129,16 +1169,24 @@ def hostel_edit(hostel_id):
         location = request.form.get("location", "")
         paid_amenities = request.form.getlist("paid_amenities")
         has_ac = request.form.get("has_ac") == "on"
+        latitude, longitude, coord_error = parse_coordinates(
+            request.form.get("latitude"),
+            request.form.get("longitude"),
+        )
 
         if not name:
             flash("Hostel name is required.", "danger")
         elif location not in HOSTEL_LOCATIONS:
             flash("Please choose a valid location.", "danger")
+        elif coord_error:
+            flash(coord_error, "danger")
         else:
             hostel.name = name
             hostel.location = location
             hostel.paid_amenities = ",".join([a for a in paid_amenities if a in AMENITY_OPTIONS])
             hostel.has_ac = has_ac
+            hostel.latitude = latitude
+            hostel.longitude = longitude
             db.session.commit()
             flash("Hostel updated successfully.", "success")
             return redirect(url_for("manager_dashboard"))
@@ -1458,6 +1506,7 @@ def admin_user_delete(user_id):
 @app.cli.command("seed")
 def seed_db():
     db.create_all()
+    upgrade_database()
 
     if User.query.count() == 0:
         admin = User(
@@ -1478,6 +1527,7 @@ def seed_db():
 
 with app.app_context():
     db.create_all()
+    upgrade_database()
 
 
 if __name__ == "__main__":

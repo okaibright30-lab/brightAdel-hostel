@@ -57,6 +57,29 @@
                                 <label class="form-check-label" for="has_ac">Hostel has AC (included in fee)</label>
                             </div>
                         </div>
+
+                        <div class="col-12">
+                            <label class="form-label">🗺️ Map Coordinates (optional)</label>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-4">
+                                    <input type="text" class="form-control" name="latitude" id="lat"
+                                           placeholder="Latitude" value="{{ hostel.latitude if hostel and hostel.latitude else '' }}">
+                                </div>
+                                <div class="col-md-4">
+                                    <input type="text" class="form-control" name="longitude" id="lng"
+                                           placeholder="Longitude" value="{{ hostel.longitude if hostel and hostel.longitude else '' }}">
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="button" class="btn btn-outline-primary w-100" id="gpsBtn">
+                                        📍 Use my current location
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="form-text">
+                                Optional — press the button while at the hostel premises, add it later, or ignore forever.
+                                Students will see an in-site map + Get Directions when coordinates exist.
+                            </div>
+                        </div>
                     </div>
 
                     <div class="mt-4 d-flex gap-2">
@@ -117,5 +140,33 @@
         </div>
     </div>
 </div>
+
+<script>
+    const gpsBtn = document.getElementById('gpsBtn');
+
+    gpsBtn.addEventListener('click', function () {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported on this device.');
+            return;
+        }
+        gpsBtn.disabled = true;
+        gpsBtn.textContent = 'Locating…';
+
+        navigator.geolocation.getCurrentPosition(
+            function (pos) {
+                document.getElementById('lat').value = pos.coords.latitude.toFixed(6);
+                document.getElementById('lng').value = pos.coords.longitude.toFixed(6);
+                gpsBtn.disabled = false;
+                gpsBtn.textContent = '✅ Location captured — save the hostel';
+            },
+            function () {
+                gpsBtn.disabled = false;
+                gpsBtn.textContent = '📍 Use my current location';
+                alert('Could not get your location. Allow location permission and try again.');
+            },
+            { enableHighAccuracy: true, timeout: 15000 }
+        );
+    });
+</script>
 
 {% endblock %}

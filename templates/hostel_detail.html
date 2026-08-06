@@ -4,6 +4,8 @@
 
 {% block content %}
 
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
 <div class="mb-4">
     <a href="{{ url_for('index') }}" class="text-decoration-none">&larr; Back to hostels</a>
     <h1 class="h3 mt-2 mb-1">{{ hostel.name }}</h1>
@@ -25,6 +27,25 @@
         {% endif %}
     </p>
 </div>
+
+{% if hostel.has_map %}
+    <h2 class="h5 mb-3">🗺️ Location Map</h2>
+    <div class="card card-shadow mb-4">
+        <div class="card-body p-2">
+            <div id="hostelMap" style="height: 320px; border-radius: 12px;"></div>
+            <div class="text-center mt-3 mb-1">
+                <a
+                    class="btn btn-gold"
+                    target="_blank"
+                    href="https://www.google.com/maps/dir/?api=1&destination={{ hostel.latitude }},{{ hostel.longitude }}"
+                >
+                    🧭 Get Directions (Google Maps)
+                </a>
+                <div class="form-text mt-1">Opens in a new tab — BrightAdel stays open.</div>
+            </div>
+        </div>
+    </div>
+{% endif %}
 
 <h2 class="h5 mb-3">Photos</h2>
 <div class="row g-3 mb-5">
@@ -84,5 +105,22 @@
         </tbody>
     </table>
 </div>
+
+{% if hostel.has_map %}
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('hostelMap').setView([{{ hostel.latitude }}, {{ hostel.longitude }}], 17);
+
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        L.marker([{{ hostel.latitude }}, {{ hostel.longitude }}])
+            .addTo(map)
+            .bindPopup("{{ hostel.name }} — {{ hostel.location }}")
+            .openPopup();
+    </script>
+{% endif %}
 
 {% endblock %}
