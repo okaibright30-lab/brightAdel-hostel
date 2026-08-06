@@ -70,6 +70,9 @@
                                 </form>
                             {% else %}
                                 <a class="btn btn-sm btn-outline-primary" href="{{ url_for('booking_receipt', booking_id=booking.id) }}">Receipt</a>
+                                {% if booking.status == "checked_out" and not booking.review() %}
+                                    <a class="btn btn-sm btn-gold" href="{{ url_for('review_new', booking_id=booking.id) }}">⭐ Review</a>
+                                {% endif %}
                             {% endif %}
                         </div>
                     </td>

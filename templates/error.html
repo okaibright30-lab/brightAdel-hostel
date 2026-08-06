@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Error {{ code }} | BrightAdel{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card card-shadow">
+            <div class="card-body p-5 text-center">
+                <div class="display-1 fw-bold text-gold">{{ code }}</div>
+                <h1 class="h4 mb-3">Oops! Something went wrong.</h1>
+                <p class="text-muted mb-4">{{ message }}</p>
+                <div class="d-flex gap-2 justify-content-center">
+                    <a class="btn btn-primary" href="{{ url_for('index') }}">🏠 Go Home</a>
+                    <a class="btn btn-outline-secondary" href="javascript:history.back()">← Go Back</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

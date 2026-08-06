@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Review Hostel | BrightAdel{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card card-shadow">
+            <div class="card-body p-4">
+
+                <h1 class="h4 mb-1">Review {{ booking.room.hostel.name }}</h1>
+                <p class="text-muted mb-4">
+                    You stayed in {{ booking.room.room_type }} at {{ booking.room.hostel.location }}.
+                    Your honest review helps other students choose well.
+                </p>
+
+                <form method="post">
+
+                    <label class="form-label d-block">Your Rating</label>
+                    <div class="mb-3">
+                        {% for i in [5, 4, 3, 2, 1] %}
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="rating" id="star{{ i }}" value="{{ i }}" required>
+                                <label class="form-check-label stars" for="star{{ i }}">
+                                    {{ '★' * i }} <small class="text-muted">({{ i }})</small>
+                                </label>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">Your Comment (optional)</label>
+                        <textarea class="form-control" name="comment" rows="4" placeholder="e.g. Clean rooms, good water supply, friendly manager..."></textarea>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-gold">Submit Review ⭐</button>
+                        <a class="btn btn-outline-secondary" href="{{ url_for('my_bookings') }}">Cancel</a>
+                    </div>
+
+                </form>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

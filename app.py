@@ -187,6 +187,15 @@ class Hostel(db.Model):
     def has_map(self):
         return self.latitude is not None and self.longitude is not None
 
+    def average_rating(self):
+        reviews = Review.query.filter_by(hostel_id=self.id).all()
+        if not reviews:
+            return None
+        return round(sum(r.rating for r in reviews) / len(reviews), 1)
+
+    def review_count(self):
+        return Review.query.filter_by(hostel_id=self.id).count()
+
 
 class HostelPhoto(db.Model):
     __tablename__ = "hostel_photos"
@@ -254,6 +263,9 @@ class Booking(db.Model):
     def half_fee(self):
         return Decimal(str(self.total_amount)) / Decimal("2")
 
+    def review(self):
+        return Review.query.filter_by(booking_id=self.id).first()
+
 
 class Payment(db.Model):
     __tablename__ = "payments"
@@ -265,6 +277,21 @@ class Payment(db.Model):
     status = db.Column(db.String(20), nullable=False, default="success")
     reference = db.Column(db.String(100), unique=True, nullable=False)
     paid_at = db.Column(db.DateTime, default=utcnow)
+
+
+class Review(db.Model):
+    __tablename__ = "reviews"
+
+    id = db.Column(db.Integer, primary_key=True)
+    hostel_id = db.Column(db.Integer, db.ForeignKey("hostels.id"), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    booking_id = db.Column(db.Integer, db.ForeignKey("bookings.id"), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    student = db.relationship("User")
+    hostel = db.relationship("Hostel", backref="reviews")
 
 
 # -----------------------------
@@ -298,7 +325,6 @@ def allowed_file(filename):
 
 
 def parse_coordinates(lat_raw, lng_raw):
-    """Returns (latitude, longitude, error_message)."""
     lat_raw = (lat_raw or "").strip()
     lng_raw = (lng_raw or "").strip()
 
@@ -316,7 +342,7 @@ def parse_coordinates(lat_raw, lng_raw):
 
 
 # -----------------------------
-# Database auto-upgrade (adds new columns without losing data)
+# Database auto-upgrade
 # -----------------------------
 
 def upgrade_database():
@@ -335,7 +361,26 @@ def upgrade_database():
 
 
 # -----------------------------
-# Public pages + search system
+# Error pages
+# -----------------------------
+
+@app.errorhandler(404)
+def error_404(e):
+    return render_template("error.html", code=404, message="The page you are looking for does not exist."), 404
+
+
+@app.errorhandler(403)
+def error_403(e):
+    return render_template("error.html", code=403, message="You do not have permission to view this page."), 403
+
+
+@app.errorhandler(500)
+def error_500(e):
+    return render_template("error.html", code=500, message="Something went wrong on our side. Please try again."), 500
+
+
+# -----------------------------
+# Public pages
 # -----------------------------
 
 @app.route("/")
@@ -410,6 +455,8 @@ def index():
             "available_slots": available_slots,
             "min_price": cheapest,
             "cover": cover,
+            "rating": hostel.average_rating(),
+            "review_count": hostel.review_count(),
         })
 
     if sort == "price_asc":
@@ -442,7 +489,13 @@ def hostel_detail(hostel_id):
     hostel = db.session.get(Hostel, hostel_id) or abort(404)
     rooms = sorted(hostel.rooms, key=lambda r: r.room_type)
     photos = hostel.photos
-    return render_template("hostel_detail.html", hostel=hostel, rooms=rooms, photos=photos)
+    reviews = Review.query.filter_by(hostel_id=hostel.id).order_by(Review.created_at.desc()).all()
+    return render_template("hostel_detail.html", hostel=hostel, rooms=rooms, photos=photos, reviews=reviews)
+
+
+@app.route("/about")
+def about():
+    return render_template("about.html")
 
 
 # -----------------------------
@@ -756,7 +809,7 @@ def profile():
 
 
 # -----------------------------
-# Student: bookings, payment, receipt, checkout
+# Student: bookings, payment, receipt, checkout, reviews
 # -----------------------------
 
 @app.route("/my/bookings")
@@ -1040,6 +1093,44 @@ def booking_decline_checkout(booking_id):
         flash("You declined the check-out request. You remain in the hostel.", "info")
 
     return redirect(url_for("my_bookings"))
+
+
+@app.route("/bookings/<int:booking_id>/review", methods=["GET", "POST"])
+@role_required("student")
+def review_new(booking_id):
+    booking = db.session.get(Booking, booking_id) or abort(404)
+
+    if booking.student_id != current_user.id:
+        abort(403)
+
+    if booking.status != "checked_out":
+        flash("You can review a hostel only after checking out.", "warning")
+        return redirect(url_for("my_bookings"))
+
+    if booking.review():
+        flash("You have already reviewed this hostel.", "info")
+        return redirect(url_for("my_bookings"))
+
+    if request.method == "POST":
+        rating = request.form.get("rating", type=int)
+        comment = request.form.get("comment", "").strip()
+
+        if not rating or rating < 1 or rating > 5:
+            flash("Please choose a star rating from 1 to 5.", "danger")
+        else:
+            review = Review(
+                hostel_id=booking.room.hostel_id,
+                student_id=current_user.id,
+                booking_id=booking.id,
+                rating=rating,
+                comment=comment,
+            )
+            db.session.add(review)
+            db.session.commit()
+            flash("Thank you! Your review is now live.", "success")
+            return redirect(url_for("hostel_detail", hostel_id=booking.room.hostel_id))
+
+    return render_template("review_form.html", booking=booking)
 
 
 # -----------------------------
@@ -1365,7 +1456,7 @@ def booking_request_checkout(booking_id):
 
 
 # -----------------------------
-# Admin: oversight + applications
+# Admin: oversight + applications + hostel removal
 # -----------------------------
 
 @app.route("/admin")
@@ -1399,6 +1490,11 @@ def admin_dashboard():
             "gross": gross,
         })
 
+    hostel_rows = []
+    for h in Hostel.query.order_by(Hostel.name).all():
+        bookings_count = sum(len(r.bookings) for r in h.rooms)
+        hostel_rows.append({"hostel": h, "bookings": bookings_count})
+
     recent_bookings = Booking.query.order_by(Booking.created_at.desc()).limit(10).all()
 
     return render_template(
@@ -1408,8 +1504,34 @@ def admin_dashboard():
         service_earnings=service_earnings,
         gateway_collected=gateway_collected,
         manager_rows=manager_rows,
+        hostel_rows=hostel_rows,
         recent_bookings=recent_bookings,
     )
+
+
+@app.route("/admin/hostels/<int:hostel_id>/delete", methods=["POST"])
+@role_required("admin")
+def admin_hostel_delete(hostel_id):
+    hostel = db.session.get(Hostel, hostel_id) or abort(404)
+
+    room_ids = [r.id for r in hostel.rooms]
+    has_bookings = room_ids and Booking.query.filter(Booking.room_id.in_(room_ids)).count() > 0
+
+    if has_bookings:
+        flash("This hostel has bookings. Suspend the manager instead.", "warning")
+    else:
+        for photo in hostel.photos:
+            path = os.path.join(app.config["UPLOAD_FOLDER"], photo.filename)
+            if os.path.exists(path):
+                os.remove(path)
+        Review.query.filter_by(hostel_id=hostel.id).delete()
+        for room in list(hostel.rooms):
+            db.session.delete(room)
+        db.session.delete(hostel)
+        db.session.commit()
+        flash("Hostel removed from the platform.", "success")
+
+    return redirect(url_for("admin_dashboard"))
 
 
 @app.route("/admin/applications")

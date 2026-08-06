@@ -87,6 +87,46 @@
     </div>
 </div>
 
+<h2 class="h5 mb-3">All Hostels (fraud control)</h2>
+<div class="table-responsive mb-5">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Hostel</th>
+                <th>Location</th>
+                <th>Manager</th>
+                <th>Bookings</th>
+                <th>Rating</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in hostel_rows %}
+                <tr>
+                    <td>{{ row.hostel.name }}</td>
+                    <td>{{ row.hostel.location }}</td>
+                    <td>{{ row.hostel.manager.username }}</td>
+                    <td>{{ row.bookings }}</td>
+                    <td>
+                        {% if row.hostel.average_rating() %}
+                            <span class="stars">★</span> {{ row.hostel.average_rating() }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="post" action="{{ url_for('admin_hostel_delete', hostel_id=row.hostel.id) }}" onsubmit="return confirm('Remove {{ row.hostel.name }} from the platform?');">
+                            <button class="btn btn-sm btn-outline-danger">Remove Hostel</button>
+                        </form>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="6">No hostels yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
 <h2 class="h5 mb-3">Manager Collections (100% theirs)</h2>
 <div class="table-responsive mb-5">
     <table class="table table-hover align-middle">

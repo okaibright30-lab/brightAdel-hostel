@@ -136,6 +136,15 @@
                         <span class="badge text-bg-success">{{ card.available_slots }} slots</span>
                     </div>
 
+                    <p class="mb-2 small">
+                        {% if card.rating %}
+                            <span class="stars">★</span> <strong>{{ card.rating }}</strong>
+                            <span class="text-muted">({{ card.review_count }} review{{ 's' if card.review_count != 1 }})</span>
+                        {% else %}
+                            ✨ <span class="text-muted">New — no reviews yet</span>
+                        {% endif %}
+                    </p>
+
                     <p class="text-muted mb-2">
                         📍 {{ card.hostel.location }}
                         {% if card.hostel.has_ac %} • ❄️ AC included{% endif %}

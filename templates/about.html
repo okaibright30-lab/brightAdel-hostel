@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}How it works | BrightAdel{% endblock %}
+
+{% block content %}
+
+<section class="hero p-5 mb-5">
+    <h1 class="display-5 fw-bold">How BrightAdel works</h1>
+    <p class="lead">One platform connecting students, hostel managers and the admin — safely and transparently.</p>
+</section>
+
+<div class="row g-4 mb-5">
+    <div class="col-md-4">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h5 mb-3">🎓 For Students</h2>
+                <ol class="mb-3">
+                    <li>Create an account with your phone number and verify it with the SMS code.</li>
+                    <li>Search hostels by location, price, room type, amenities and map.</li>
+                    <li>Book a slot and pay at least half online (MoMo / card).</li>
+                    <li>Get a receipt with a verification code. Check in. Review after checkout.</li>
+                </ol>
+                <p class="text-muted small mb-0">You can book multiple hostels and leave anytime — your slot frees up automatically.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h5 mb-3">🏠 For Managers</h2>
+                <ol class="mb-3">
+                    <li>Apply with your name, phone and a proof-of-ownership document.</li>
+                    <li>Admin reviews and approves your application.</li>
+                    <li>Add your hostel, rooms, photos and map location.</li>
+                    <li>Receive bookings, check students in, and keep 100% of your hostel fees.</li>
+                </ol>
+                <p class="text-muted small mb-0">Check-outs require the student's approval — no secret evictions.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h5 mb-3">🛡️ For Everyone (Trust)</h2>
+                <ul class="mb-3">
+                    <li>Payments are processed securely by <strong>Paystack</strong>.</li>
+                    <li>Every receipt carries a <strong>verification code</strong> managers can check.</li>
+                    <li>Managers are verified with ownership documents.</li>
+                    <li>The admin can suspend users and remove fraudulent hostels.</li>
+                </ul>
+                <p class="text-muted small mb-0">
+                    Fees: students add a GH₵ 20.00 service fee + 2% gateway fee per payment. Managers receive 100% of hostel fees.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card card-shadow">
+    <div class="card-body p-4 text-center">
+        <h2 class="h5 mb-2">📞 Contact & Support</h2>
+        <p class="mb-1">Call / WhatsApp: <a href="tel:0200000000"><strong>020 000 0000</strong></a></p>
+        <p class="mb-0">Email: <strong>support@brightadel.com</strong></p>
+    </div>
+</div>
+
+{% endblock %}
