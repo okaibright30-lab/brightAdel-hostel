@@ -1,4 +1,6 @@
 import os
+import io
+import csv
 import random
 import uuid
 import hashlib
@@ -17,6 +19,7 @@ from flask import (
     flash,
     abort,
     session,
+    Response,
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -50,10 +53,15 @@ login_manager.login_message_category = "warning"
 
 
 # -----------------------------
-# CONFIGURATION
+# CONFIGURATION (environment-driven for production)
 # -----------------------------
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+
+# SMS: leave SMS_API_KEY empty for demo mode.
+# Providers supported: arkesel | termii | mnotify
 SMS_API_KEY = os.environ.get("SMS_API_KEY", "")
+SMS_PROVIDER = os.environ.get("SMS_PROVIDER", "arkesel")
+SMS_SENDER_ID = os.environ.get("SMS_SENDER_ID", "BrightAdel")
 
 
 HOSTEL_LOCATIONS = ["Ayensu", "Kwaprow", "Amamoma", "Old Site"]
@@ -68,7 +76,6 @@ ROOM_TYPE_CAPACITY = {
 BOOKING_STATUSES = ["pending", "confirmed", "checked_in", "checkout_requested", "checked_out", "cancelled"]
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf"}
 
-# FEE MODEL: managers get 100%; students add GH₵20 service fee + 2% gateway fee.
 PLATFORM_FEE = Decimal("20.00")
 PROCESSING_FEE_RATE = Decimal("0.02")
 
@@ -108,17 +115,75 @@ def valid_phone(digits):
     return digits.startswith("0") and len(digits) == 10
 
 
+def to_international(phone):
+    if phone.startswith("0"):
+        return "233" + phone[1:]
+    if phone.startswith("+"):
+        return phone[1:]
+    return phone
+
+
 def send_sms(phone, message):
+    """Send SMS via a real provider when SMS_API_KEY is set; otherwise demo mode."""
     if not SMS_API_KEY:
-        print(f"[SMS TEST MODE] To {phone}: {message}")
+        print(f"[SMS DEMO] To {phone}: {message}")
         return True
-    return True
+
+    intl = to_international(phone)
+
+    try:
+        if SMS_PROVIDER == "termii":
+            resp = requests.post(
+                "https://api.ng.termii.com/api/v1/sms/send",
+                json={
+                    "api_key": SMS_API_KEY,
+                    "to": intl,
+                    "from": SMS_SENDER_ID,
+                    "sms": message,
+                    "type": "plain",
+                    "channel": "generic",
+                },
+                timeout=20,
+            )
+        elif SMS_PROVIDER == "mnotify":
+            resp = requests.post(
+                "https://apps.mnotify.net/smsapi/one/batch/",
+                data={
+                    "api_key": SMS_API_KEY,
+                    "sender_id": SMS_SENDER_ID,
+                    "numbers": intl,
+                    "message": message,
+                },
+                timeout=20,
+            )
+        else:  # arkesel (default)
+            resp = requests.get(
+                "https://sms.arkesel.com/sms/api",
+                params={
+                    "action": "send-sms",
+                    "api-key": SMS_API_KEY,
+                    "from": SMS_SENDER_ID,
+                    "to": intl,
+                    "message": message,
+                },
+                timeout=20,
+            )
+
+        print(f"[SMS via {SMS_PROVIDER}] {resp.status_code}: {resp.text[:200]}")
+        return resp.status_code == 200
+    except Exception as e:
+        print(f"[SMS ERROR] {e}")
+        return False
 
 
 def receipt_code(booking):
     secret = app.config["SECRET_KEY"]
     digest = hmac.new(secret.encode(), f"BA-{booking.id}".encode(), hashlib.sha256).hexdigest()
     return digest[:8].upper()
+
+
+def notify(user_id, message):
+    db.session.add(Notification(user_id=user_id, message=message))
 
 
 # -----------------------------
@@ -294,6 +359,27 @@ class Review(db.Model):
     hostel = db.relationship("Hostel", backref="reviews")
 
 
+class Notification(db.Model):
+    __tablename__ = "notifications"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    message = db.Column(db.String(255), nullable=False)
+    read = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+    user = db.relationship("User", backref="notifications")
+
+
+class Announcement(db.Model):
+    __tablename__ = "announcements"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(120), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow)
+
+
 # -----------------------------
 # Login loader + helpers
 # -----------------------------
@@ -301,6 +387,14 @@ class Review(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
+
+@app.context_processor
+def inject_unread_count():
+    if current_user.is_authenticated:
+        count = Notification.query.filter_by(user_id=current_user.id, read=False).count()
+        return dict(unread_count=count)
+    return dict(unread_count=0)
 
 
 def role_required(*roles):
@@ -340,10 +434,6 @@ def parse_coordinates(lat_raw, lng_raw):
     except (ValueError, TypeError):
         return None, None, "Coordinates look invalid. Use the GPS button or leave both empty."
 
-
-# -----------------------------
-# Database auto-upgrade
-# -----------------------------
 
 def upgrade_database():
     from sqlalchemy import inspect, text
@@ -463,12 +553,17 @@ def index():
         cards.sort(key=lambda c: c["min_price"] if c["min_price"] is not None else Decimal("999999999"))
     elif sort == "price_desc":
         cards.sort(key=lambda c: c["min_price"] if c["min_price"] is not None else Decimal("0"), reverse=True)
+    elif sort == "rating":
+        cards.sort(key=lambda c: (c["rating"] if c["rating"] is not None else -1, c["review_count"]), reverse=True)
     else:
         cards.sort(key=lambda c: c["hostel"].name)
+
+    announcements = Announcement.query.order_by(Announcement.created_at.desc()).limit(3).all()
 
     return render_template(
         "index.html",
         cards=cards,
+        announcements=announcements,
         q=q,
         location=location,
         room_type=room_type,
@@ -496,6 +591,26 @@ def hostel_detail(hostel_id):
 @app.route("/about")
 def about():
     return render_template("about.html")
+
+
+# -----------------------------
+# Notifications
+# -----------------------------
+
+@app.route("/notifications")
+@login_required
+def notifications():
+    items = Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).limit(50).all()
+    return render_template("notifications.html", items=items)
+
+
+@app.route("/notifications/read", methods=["POST"])
+@login_required
+def notifications_read():
+    Notification.query.filter_by(user_id=current_user.id, read=False).update({"read": True})
+    db.session.commit()
+    flash("All notifications marked as read.", "success")
+    return redirect(url_for("notifications"))
 
 
 # -----------------------------
@@ -564,6 +679,10 @@ def register():
                     status="pending",
                 )
                 db.session.add(application)
+
+                for admin in User.query.filter_by(role="admin").all():
+                    notify(admin.id, f"New manager application from {first_name} {last_name} ({phone}).")
+
                 db.session.commit()
 
                 flash("Application submitted! The admin will review your ownership document. You can log in once approved.", "success")
@@ -838,6 +957,9 @@ def booking_new(room_id):
                 notes=notes,
             )
             db.session.add(booking)
+
+            notify(room.hostel.manager_id, f"New booking: {current_user.username} booked {room.room_type} at {room.hostel.name}.")
+
             db.session.commit()
 
             flash("Booking created. Pay at least half to confirm your slot.", "success")
@@ -932,6 +1054,9 @@ def booking_pay(booking_id):
             if booking.status == "pending" and (paid + amount) >= booking.half_fee():
                 booking.status = "confirmed"
 
+            notify(current_user.id, f"Payment of GH₵ {amount} received for {booking.room.hostel.name}. Receipt code: {receipt_code(booking)}.")
+            notify(booking.room.hostel.manager_id, f"Payment received: {current_user.username} paid GH₵ {amount} for {booking.room.hostel.name}.")
+
             db.session.commit()
 
             flash("Payment successful!", "success")
@@ -1000,6 +1125,9 @@ def payment_callback(booking_id):
 
         if booking.status == "pending" and (booking.paid_amount() + base) >= booking.half_fee():
             booking.status = "confirmed"
+
+        notify(current_user.id, f"Payment of GH₵ {base} received for {booking.room.hostel.name}. Receipt code: {receipt_code(booking)}.")
+        notify(booking.room.hostel.manager_id, f"Payment received: {current_user.username} paid GH₵ {base} for {booking.room.hostel.name}.")
 
         db.session.commit()
 
@@ -1071,6 +1199,7 @@ def booking_approve_checkout(booking_id):
         flash("There is no check-out request on this booking.", "warning")
     else:
         booking.status = "checked_out"
+        notify(booking.room.hostel.manager_id, f"{current_user.username} approved the check-out at {booking.room.hostel.name}.")
         db.session.commit()
         flash("You approved the check-out. Your slot has been freed.", "success")
 
@@ -1089,6 +1218,7 @@ def booking_decline_checkout(booking_id):
         flash("There is no check-out request on this booking.", "warning")
     else:
         booking.status = "checked_in"
+        notify(booking.room.hostel.manager_id, f"{current_user.username} declined the check-out request at {booking.room.hostel.name}.")
         db.session.commit()
         flash("You declined the check-out request. You remain in the hostel.", "info")
 
@@ -1126,6 +1256,9 @@ def review_new(booking_id):
                 comment=comment,
             )
             db.session.add(review)
+
+            notify(booking.room.hostel.manager_id, f"New review: {current_user.username} rated {booking.room.hostel.name} {rating}/5.")
+
             db.session.commit()
             flash("Thank you! Your review is now live.", "success")
             return redirect(url_for("hostel_detail", hostel_id=booking.room.hostel_id))
@@ -1134,7 +1267,7 @@ def review_new(booking_id):
 
 
 # -----------------------------
-# Manager: hostels, rooms, photos, bookings, receipts
+# Manager: hostels, rooms, photos, bookings, receipts, export
 # -----------------------------
 
 @app.route("/manager")
@@ -1165,6 +1298,38 @@ def manager_dashboard():
         booked_slots=booked_slots,
         available_slots=total_slots - booked_slots,
         bookings=bookings,
+    )
+
+
+@app.route("/export/bookings")
+@role_required("manager", "admin")
+def export_bookings():
+    if current_user.role == "admin":
+        bookings = Booking.query.order_by(Booking.created_at.desc()).all()
+    else:
+        hostel_ids = [h.id for h in Hostel.query.filter_by(manager_id=current_user.id).all()]
+        bookings = Booking.query.join(Room).filter(Room.hostel_id.in_(hostel_ids)).order_by(Booking.created_at.desc()).all() if hostel_ids else []
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Student", "Phone", "Hostel", "Room Type", "Status", "Paid (GHS)", "Total (GHS)", "Date"])
+
+    for b in bookings:
+        writer.writerow([
+            b.student.username,
+            b.student.phone,
+            b.room.hostel.name,
+            b.room.room_type,
+            b.status,
+            str(b.paid_amount()),
+            str(b.total_amount),
+            b.created_at.strftime("%d %b %Y"),
+        ])
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=brightadel_bookings.csv"},
     )
 
 
@@ -1431,6 +1596,7 @@ def booking_checkin(booking_id):
         flash("Only confirmed (paid) bookings can be checked in.", "warning")
     else:
         booking.status = "checked_in"
+        notify(booking.student_id, f"You have been checked in at {booking.room.hostel.name}. Welcome!")
         db.session.commit()
         flash(f"{booking.student.username} checked in.", "success")
 
@@ -1449,6 +1615,7 @@ def booking_request_checkout(booking_id):
         flash("Only checked-in students can be requested to check out.", "warning")
     else:
         booking.status = "checkout_requested"
+        notify(booking.student_id, f"{booking.room.hostel.name} requested your check-out. Please approve or decline in My Bookings.")
         db.session.commit()
         flash("Check-out request sent. The student must approve it.", "info")
 
@@ -1456,7 +1623,7 @@ def booking_request_checkout(booking_id):
 
 
 # -----------------------------
-# Admin: oversight + applications + hostel removal
+# Admin: oversight + applications + hostel removal + announcements
 # -----------------------------
 
 @app.route("/admin")
@@ -1495,6 +1662,7 @@ def admin_dashboard():
         bookings_count = sum(len(r.bookings) for r in h.rooms)
         hostel_rows.append({"hostel": h, "bookings": bookings_count})
 
+    announcements = Announcement.query.order_by(Announcement.created_at.desc()).all()
     recent_bookings = Booking.query.order_by(Booking.created_at.desc()).limit(10).all()
 
     return render_template(
@@ -1505,8 +1673,35 @@ def admin_dashboard():
         gateway_collected=gateway_collected,
         manager_rows=manager_rows,
         hostel_rows=hostel_rows,
+        announcements=announcements,
         recent_bookings=recent_bookings,
     )
+
+
+@app.route("/admin/announcements", methods=["POST"])
+@role_required("admin")
+def admin_announcement_new():
+    title = request.form.get("title", "").strip()
+    body = request.form.get("body", "").strip()
+
+    if not title or not body:
+        flash("Announcement needs a title and a message.", "danger")
+    else:
+        db.session.add(Announcement(title=title, body=body))
+        db.session.commit()
+        flash("Announcement published on the homepage.", "success")
+
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/announcements/<int:ann_id>/delete", methods=["POST"])
+@role_required("admin")
+def admin_announcement_delete(ann_id):
+    announcement = db.session.get(Announcement, ann_id) or abort(404)
+    db.session.delete(announcement)
+    db.session.commit()
+    flash("Announcement removed.", "success")
+    return redirect(url_for("admin_dashboard"))
 
 
 @app.route("/admin/hostels/<int:hostel_id>/delete", methods=["POST"])
@@ -1564,6 +1759,8 @@ def admin_application_review(app_id):
             user.password_hash = application.password_hash
             db.session.add(user)
             db.session.delete(application)
+            db.session.flush()
+            notify(user.id, "Congratulations! Your manager account is approved. You can now list your hostel.")
             db.session.commit()
             flash(f"{user.username} approved as a manager. They can now log in.", "success")
     elif decision == "reject":

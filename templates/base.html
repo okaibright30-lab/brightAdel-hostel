@@ -150,6 +150,11 @@
             <ul class="navbar-nav align-items-lg-center">
                 {% if current_user.is_authenticated %}
                     <li class="nav-item me-2">
+                        <a class="nav-link" href="{{ url_for('notifications') }}">
+                            🔔{% if unread_count %} <span class="badge text-bg-danger">{{ unread_count }}</span>{% endif %}
+                        </a>
+                    </li>
+                    <li class="nav-item me-2">
                         <a class="nav-link" href="{{ url_for('profile') }}">Profile</a>
                     </li>
                     <li class="nav-item me-2">

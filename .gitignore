@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 brightadel.db
 start.sh
+static/uploads/*

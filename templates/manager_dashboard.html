@@ -7,6 +7,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="h3 mb-0">Manager Desk</h1>
     <div class="d-flex gap-2">
+        <a class="btn btn-outline-success" href="{{ url_for('export_bookings') }}">⬇ Export CSV</a>
         <a class="btn btn-outline-primary" href="{{ url_for('hostel_new') }}">New Hostel</a>
         <a class="btn btn-primary" href="{{ url_for('room_new') }}">Add Rooms</a>
     </div>
@@ -95,7 +96,7 @@
             {% for booking in bookings %}
                 <tr>
                     <td>{{ booking.student.username }}</td>
-                    <td><a href="tel:{{ booking.student.phone }}">{{ booking.student.phone }}</a></td>
+                    <td>{{ booking.student.phone }}</td>
                     <td>{{ booking.room.hostel.name }}</td>
                     <td>{{ booking.room.room_type }}</td>
                     <td>GH₵ {{ "%.2f"|format(booking.paid_amount()) }} / {{ "%.2f"|format(booking.total_amount) }}</td>
