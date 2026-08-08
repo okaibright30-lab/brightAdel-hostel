@@ -155,31 +155,49 @@ def send_sms(phone, message):
                 },
                 timeout=20,
             )
-        else:  # arkesel: try v2 first, then old v1
-            resp = requests.post(
-                "https://api.arkesel.com/sms/v2/message/send",
-                headers={"api-key": SMS_API_KEY, "Content-Type": "application/json"},
-                json={
-                    "sender": SMS_SENDER_ID,
-                    "recipients": [{"phone": intl, "message": message}],
-                },
-                timeout=20,
-            )
-            print(f"[SMS v2] {resp.status_code}: {resp.text[:200]}")
-            if resp.status_code in (200, 201):
-                return True
+        else:
+            # ARKESEL: try every v2 address (some hosts are blocked on free hosting),
+            # then fall back to the old v1 address.
+            resp = None
 
-            resp = requests.get(
-                "https://sms.arkesel.com/sms/api",
-                params={
-                    "action": "send-sms",
-                    "api-key": SMS_API_KEY,
-                    "from": SMS_SENDER_ID,
-                    "to": intl,
-                    "message": message,
-                },
-                timeout=20,
-            )
+            for url in (
+                "https://api.arkesel.com/sms/v2/message/send",
+                "https://sms.arkesel.com/sms/v2/message/send",
+                "https://sms.arkesel.com/api/v2/sms/send",
+            ):
+                try:
+                    r = requests.post(
+                        url,
+                        headers={"api-key": SMS_API_KEY, "Content-Type": "application/json"},
+                        json={
+                            "sender": SMS_SENDER_ID,
+                            "recipients": [{"phone": intl, "message": message}],
+                        },
+                        timeout=20,
+                    )
+                    print(f"[SMS v2 {url}] {r.status_code}: {r.text[:150]}")
+                    if r.status_code in (200, 201):
+                        return True
+                    if resp is None:
+                        resp = r
+                except Exception as e:
+                    print(f"[SMS v2 ERROR {url}] {e}")
+
+            try:
+                resp = requests.get(
+                    "https://sms.arkesel.com/sms/api",
+                    params={
+                        "action": "send-sms",
+                        "api-key": SMS_API_KEY,
+                        "from": SMS_SENDER_ID,
+                        "to": intl,
+                        "message": message,
+                    },
+                    timeout=20,
+                )
+            except Exception as e:
+                print(f"[SMS ERROR] {e}")
+                return False
 
         print(f"[SMS via {SMS_PROVIDER}] {resp.status_code}: {resp.text[:200]}")
         return resp.status_code == 200
