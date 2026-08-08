@@ -61,7 +61,7 @@ PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
 # Providers supported: arkesel | termii | mnotify
 SMS_API_KEY = os.environ.get("SMS_API_KEY", "")
 SMS_PROVIDER = os.environ.get("SMS_PROVIDER", "arkesel")
-SMS_SENDER_ID = os.environ.get("SMS_SENDER_ID", "BrightAdel")
+SMS_SENDER_ID = os.environ.get("SMS_SENDER_ID", "ARKESEL")
 
 
 HOSTEL_LOCATIONS = ["Ayensu", "Kwaprow", "Amamoma", "Old Site"]
@@ -155,7 +155,20 @@ def send_sms(phone, message):
                 },
                 timeout=20,
             )
-        else:  # arkesel (default)
+        else:  # arkesel: try v2 first, then old v1
+            resp = requests.post(
+                "https://api.arkesel.com/sms/v2/message/send",
+                headers={"api-key": SMS_API_KEY, "Content-Type": "application/json"},
+                json={
+                    "sender": SMS_SENDER_ID,
+                    "recipients": [{"phone": intl, "message": message}],
+                },
+                timeout=20,
+            )
+            print(f"[SMS v2] {resp.status_code}: {resp.text[:200]}")
+            if resp.status_code in (200, 201):
+                return True
+
             resp = requests.get(
                 "https://sms.arkesel.com/sms/api",
                 params={
