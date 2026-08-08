@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}My Payouts | BrightAdel{% endblock %}
+
+{% block content %}
+
+<h1 class="h3 mb-4">💸 My Payouts</h1>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Total Earned (100% of hostel fees)</h2>
+                <p class="h3 mb-0">GH₵ {{ "%.2f"|format(gross) }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-shadow h-100">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Requested / Paid Out</h2>
+                <p class="h3 mb-0">GH₵ {{ "%.2f"|format(requested) }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-shadow h-100" style="border-left: 5px solid #ffb81c;">
+            <div class="card-body">
+                <h2 class="h6 text-muted">Available to Request</h2>
+                <p class="h3 mb-0 text-gold">GH₵ {{ "%.2f"|format(available) }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card card-shadow mb-5">
+    <div class="card-body p-4">
+        <h2 class="h5 mb-3">Request a Payout</h2>
+        <form method="post" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Amount (GH₵)</label>
+                <input type="number" step="0.01" min="1" class="form-control" name="amount" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Receive via</label>
+                <select class="form-select" name="method" required>
+                    <option value="">Choose…</option>
+                    <option value="momo">Mobile Money</option>
+                    <option value="bank">Bank Account</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">MoMo number / Bank details</label>
+                <input type="text" class="form-control" name="destination" placeholder="e.g. MTN MoMo 0244123456" required>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-gold w-100">Request</button>
+            </div>
+        </form>
+        <div class="form-text mt-2">
+            The admin sends the money manually (MoMo/bank), then marks it as paid — you'll get a notification.
+        </div>
+    </div>
+</div>
+
+<h2 class="h5 mb-3">My Payout Requests</h2>
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Amount</th>
+                <th>Method</th>
+                <th>Destination</th>
+                <th>Status</th>
+                <th>Note</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in payouts %}
+                <tr>
+                    <td>{{ p.created_at.strftime("%d %b %Y") }}</td>
+                    <td>GH₵ {{ "%.2f"|format(p.amount) }}</td>
+                    <td>{{ p.method|upper }}</td>
+                    <td>{{ p.destination }}</td>
+                    <td>
+                        {% if p.status == "pending" %}
+                            <span class="badge text-bg-warning">pending</span>
+                        {% elif p.status == "paid" %}
+                            <span class="badge text-bg-success">paid ✅</span>
+                        {% else %}
+                            <span class="badge text-bg-danger">rejected</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ p.admin_note or "—" }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="6">No payout requests yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

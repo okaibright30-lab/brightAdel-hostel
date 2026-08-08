@@ -22,4 +22,6 @@ Manager
     bash start.sh
     http://127.0.0.1:5000
 
+    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
+
     */

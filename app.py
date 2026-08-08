@@ -124,7 +124,6 @@ def to_international(phone):
 
 
 def send_sms(phone, message):
-    """Send SMS via a real provider when SMS_API_KEY is set; otherwise demo mode."""
     if not SMS_API_KEY:
         print(f"[SMS DEMO] To {phone}: {message}")
         return True
@@ -184,6 +183,29 @@ def receipt_code(booking):
 
 def notify(user_id, message):
     db.session.add(Notification(user_id=user_id, message=message))
+
+
+def manager_gross(user):
+    hostel_ids = [h.id for h in user.hostels]
+    if not hostel_ids:
+        return Decimal("0")
+    value = db.session.query(
+        db.func.coalesce(db.func.sum(Payment.amount), 0)
+    ).select_from(Payment).join(Booking).join(Room).filter(
+        Room.hostel_id.in_(hostel_ids),
+        Payment.status == "success",
+    ).scalar()
+    return Decimal(str(value))
+
+
+def manager_requested(user):
+    value = db.session.query(
+        db.func.coalesce(db.func.sum(PayoutRequest.amount), 0)
+    ).filter(
+        PayoutRequest.manager_id == user.id,
+        PayoutRequest.status.in_(["pending", "paid"]),
+    ).scalar()
+    return Decimal(str(value))
 
 
 # -----------------------------
@@ -378,6 +400,22 @@ class Announcement(db.Model):
     title = db.Column(db.String(120), nullable=False)
     body = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow)
+
+
+class PayoutRequest(db.Model):
+    __tablename__ = "payout_requests"
+
+    id = db.Column(db.Integer, primary_key=True)
+    manager_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    method = db.Column(db.String(20), nullable=False)
+    destination = db.Column(db.String(200), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    admin_note = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow)
+    paid_at = db.Column(db.DateTime, nullable=True)
+
+    manager = db.relationship("User", backref="payout_requests")
 
 
 # -----------------------------
@@ -1267,7 +1305,7 @@ def review_new(booking_id):
 
 
 # -----------------------------
-# Manager: hostels, rooms, photos, bookings, receipts, export
+# Manager: hostels, rooms, photos, bookings, receipts, export, payouts
 # -----------------------------
 
 @app.route("/manager")
@@ -1298,6 +1336,54 @@ def manager_dashboard():
         booked_slots=booked_slots,
         available_slots=total_slots - booked_slots,
         bookings=bookings,
+    )
+
+
+@app.route("/manager/payouts", methods=["GET", "POST"])
+@role_required("manager")
+def manager_payouts():
+    if request.method == "POST":
+        raw_amount = request.form.get("amount", type=float)
+        amount = money(raw_amount) if raw_amount else Decimal("0")
+        method = request.form.get("method", "")
+        destination = request.form.get("destination", "").strip()
+
+        available = manager_gross(current_user) - manager_requested(current_user)
+
+        if method not in ["momo", "bank"]:
+            flash("Choose MoMo or Bank.", "danger")
+        elif not destination:
+            flash("Enter the account that should receive the money.", "danger")
+        elif amount <= 0:
+            flash("Enter a valid amount.", "danger")
+        elif amount > available:
+            flash(f"You can request at most GH₵ {available}.", "danger")
+        else:
+            payout = PayoutRequest(
+                manager_id=current_user.id,
+                amount=amount,
+                method=method,
+                destination=destination,
+            )
+            db.session.add(payout)
+
+            for admin in User.query.filter_by(role="admin").all():
+                notify(admin.id, f"💸 Payout request: {current_user.username} requests GH₵ {amount} ({method.upper()}).")
+
+            db.session.commit()
+            flash("Payout request sent to the admin. You'll be notified when it's paid.", "success")
+            return redirect(url_for("manager_payouts"))
+
+    payouts = PayoutRequest.query.filter_by(manager_id=current_user.id).order_by(PayoutRequest.created_at.desc()).all()
+    gross = manager_gross(current_user)
+    requested = manager_requested(current_user)
+
+    return render_template(
+        "manager_payouts.html",
+        payouts=payouts,
+        gross=gross,
+        requested=requested,
+        available=gross - requested,
     )
 
 
@@ -1623,7 +1709,7 @@ def booking_request_checkout(booking_id):
 
 
 # -----------------------------
-# Admin: oversight + applications + hostel removal + announcements
+# Admin: oversight, applications, hostel removal, announcements, payouts
 # -----------------------------
 
 @app.route("/admin")
@@ -1646,14 +1732,10 @@ def admin_dashboard():
 
     manager_rows = []
     for m in User.query.filter_by(role="manager").order_by(User.username).all():
-        hostel_ids = [h.id for h in m.hostels]
-        gross = Decimal("0")
-        if hostel_ids:
-            value = db.session.query(db.func.coalesce(db.func.sum(Payment.amount), 0)).select_from(Payment).join(Booking).join(Room).filter(Room.hostel_id.in_(hostel_ids), Payment.status == "success").scalar()
-            gross = Decimal(str(value))
+        gross = manager_gross(m)
         manager_rows.append({
             "manager": m,
-            "hostels": len(hostel_ids),
+            "hostels": len(m.hostels),
             "gross": gross,
         })
 
@@ -1676,6 +1758,48 @@ def admin_dashboard():
         announcements=announcements,
         recent_bookings=recent_bookings,
     )
+
+
+@app.route("/admin/payouts")
+@role_required("admin")
+def admin_payouts():
+    payouts = PayoutRequest.query.order_by(PayoutRequest.created_at.desc()).all()
+    return render_template("admin_payouts.html", payouts=payouts)
+
+
+@app.route("/admin/payouts/<int:payout_id>/pay", methods=["POST"])
+@role_required("admin")
+def admin_payout_pay(payout_id):
+    payout = db.session.get(PayoutRequest, payout_id) or abort(404)
+
+    if payout.status != "pending":
+        flash("This payout was already handled.", "warning")
+    else:
+        payout.status = "paid"
+        payout.paid_at = utcnow()
+        notify(payout.manager_id, f"✅ Your payout of GH₵ {payout.amount} has been sent to: {payout.destination}.")
+        db.session.commit()
+        flash("Payout marked as PAID. The manager has been notified.", "success")
+
+    return redirect(url_for("admin_payouts"))
+
+
+@app.route("/admin/payouts/<int:payout_id>/reject", methods=["POST"])
+@role_required("admin")
+def admin_payout_reject(payout_id):
+    payout = db.session.get(PayoutRequest, payout_id) or abort(404)
+
+    if payout.status != "pending":
+        flash("This payout was already handled.", "warning")
+    else:
+        note = request.form.get("note", "").strip()
+        payout.status = "rejected"
+        payout.admin_note = note
+        notify(payout.manager_id, f"❌ Your payout request of GH₵ {payout.amount} was rejected. {note}")
+        db.session.commit()
+        flash("Payout rejected. The manager has been notified.", "success")
+
+    return redirect(url_for("admin_payouts"))
 
 
 @app.route("/admin/announcements", methods=["POST"])
@@ -1817,10 +1941,6 @@ def admin_user_delete(user_id):
 
     return redirect(url_for("admin_users"))
 
-
-# -----------------------------
-# Seed: backend admin ONLY
-# -----------------------------
 
 # -----------------------------
 # Seed: backend admin ONLY

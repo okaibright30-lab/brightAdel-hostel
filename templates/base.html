@@ -128,6 +128,9 @@
                             <a class="nav-link" href="{{ url_for('manager_dashboard') }}">Manager Desk</a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('manager_payouts') }}">Payouts</a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('manager_receipts') }}">Receipts</a>
                         </li>
                         <li class="nav-item">
@@ -136,6 +139,9 @@
                     {% elif current_user.role == "admin" %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Overview</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_payouts') }}">Payouts</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('admin_applications') }}">Applications</a>
