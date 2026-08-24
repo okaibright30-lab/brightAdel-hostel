@@ -1,27 +1,6 @@
-/* 
-Admin
-    Phone: 0200000000
-    Password: admin123
+BRIGHTADEL HOSTEL BOOKING PLATFORM
 
-Student
-    Name: Bright Okai
-    Phone: 0547421221
-    Password: Kekelikofi
+📘 User Manual (text): see manual.txt in this repository
+🎥 User Manual Video: https://drive.google.com/file/d/1ev6Ny8Aijczkx-q0f2D1adiq-n52VWdx/view?usp=drive_link
 
-Manager 
-    Name: Selorm Adegle
-    Phone: 0531402674
-    Password: Selorm11
-
-    Name: Amevor Selorm
-    Phone: 0200011111
-    Password: Kekelikofi
-
-    cd ~/Desktop/brightadel-hostel
-    source venv/Scripts/activate
-    bash start.sh
-    http://127.0.0.1:5000
-
-    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
-
-    */
+Live site: https://brightadelhostel.pythonanywhere.com
