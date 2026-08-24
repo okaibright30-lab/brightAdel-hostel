@@ -1,0 +1,197 @@
+INTRODUCTION & GETTING STARTED
+
+About BrightAdel BrightAdel is a secure web-based hostel booking and management platform built for the University of Cape Coast (UCC) community. It connects students searching for accommodation, hostel managers listing properties, and platform administrators overseeing operations.
+
+
+What You Need
+•	A smartphone or computer with an internet browser.
+•	A valid Ghanaian mobile number for SMS verification.
+•	A Mobile Money wallet or bank card for payments.
+
+
+Account Types
+•	Student: search, book, and pay for hostel slots.
+•	Hostel Manager: list and manage hostels, rooms, receipts, and payouts.
+•	Administrator: approve applications, manage users, and monitor the platform.
+
+
+Registering as a Student
+1.	Open the BrightAdel website and click Create Account.
+2.	Enter your first name, last name, phone number, and password.
+3.	Select Student and submit.
+4.	You will receive a 6-digit code by SMS.
+5.	Enter the code on the verification page within 10 minutes.
+6.	Once verified, log in with your phone number and password.
+
+
+Logging In
+1.	Click Login.
+2.	Enter your phone number and password.
+3.	You will be taken straight to your dashboard.
+
+
+Resetting a Forgotten Password
+1.	Click Forgot Password on the login page.
+2.	Enter your registered phone number.
+3.	Enter the SMS code you receive.
+4.	Set a new password and log in.
+
+
+Security Tips
+•	Never share your OTP code with anyone.
+•	BrightAdel staff will never ask for your password.
+•	Always confirm that your receipt carries a verification code.
+
+
+STUDENT GUIDE
+
+Searching for Hostels Use the homepage search bar and filters: location (Ayensu, Kwaprow, Amamoma, Old Site), room type, price range, amenities to exclude, air-conditioning, and available slots. Sort results by name, price, or rating.
+
+Viewing Hostel Details Click any hostel card to see photos, room types, prices, available slots, a map with GPS directions, and student reviews.
+
+
+Booking a Room
+1.	Log in as a student.
+2.	Open a hostel and choose a room type with available slots.
+3.	Click Book, add an optional note, and confirm.
+4.	You will be taken to the payment page.
+
+
+Paying for Your Booking
+•	Pay at least half to confirm your slot, or pay in full.
+•	Click Pay to open the secure Paystack checkout.
+•	Approve the charge with Mobile Money or card.
+•	Once verified, your booking becomes Confirmed and a receipt with a verification code is generated.
+•	Note: total charge = hostel fee + GH₵20 platform fee + 2% gateway charge.
+
+
+Managing Your Bookings (My Bookings)
+•	View statuses: pending, confirmed, checked in, checked out.
+•	Cancel unpaid bookings.
+•	Leave Hostel frees your slot when you move out.
+•	If your manager requests a checkout, you may Approve or Decline it.
+
+
+Your Receipt Every payment produces a receipt with a unique code. Managers use this code to confirm your payment is genuine at check-in.
+
+Reviewing a Hostel After checking out, open the booking and click Write a Review, rate 1–5 stars, and add a comment.
+
+Notifications Click the bell icon to see updates on bookings, payments, and checkouts; mark them read when done.
+
+
+HOSTEL MANAGER GUIDE
+
+Becoming a Manager
+1.	On the register page, choose Manager.
+2.	Enter your personal details, hostel name, and location.
+3.	Upload a proof-of-ownership document (JPG, PNG, WEBP, or PDF).
+4.	Wait for admin approval — you will be notified once approved.
+
+
+Manager Dashboard See your total slots, booked slots, available slots, and every booking across your hostels.
+
+Adding a Hostel
+1.	Click Add Hostel.
+2.	Enter the name, location, paid amenities (water, electricity, Wi-Fi), and AC availability.
+3.	Optionally capture GPS coordinates with the location button for the map.
+4.	Save.
+
+
+Uploading Photos On the hostel edit page, upload photos under the labels: Cover (Compound), Bathroom, Bedroom, and Kitchen. Delete outdated photos at any time.
+
+
+Adding Rooms
+1.	Click Add Room.
+2.	Choose the hostel, room type (1–4 in a room), and quantity.
+3.	Set the price per year. Slots are calculated automatically (quantity × capacity).
+
+
+Managing Bookings
+•	Check In confirmed (paid) students when they arrive.
+•	Request Checkout from checked-in students at the end of the session — the student must approve it.
+
+
+Verifying Receipts Open Verify Receipt, enter the code on a student’s receipt, and confirm it matches a real booking before check-in. Reject any receipt that fails verification.
+
+
+Receipts & Reports
+•	Receipts lists all paid bookings with their codes.
+•	Export CSV downloads your bookings as a spreadsheet.
+
+
+Payouts
+1.	Open Payouts to see your available balance.
+2.	Enter an amount, choose MoMo or Bank, and enter the destination account.
+3.	Submit — you will be notified when the admin pays it.
+
+
+ADMINISTRATOR GUIDE
+
+Admin Dashboard View platform statistics: students, managers, hostels, rooms, bookings, total processed value, and service earnings. Review manager earnings, hostel performance, recent bookings, and announcements.
+
+
+Approving Manager Applications
+1.	Open Applications.
+2.	Review the applicant’s details and open the uploaded ownership document.
+3.	Click Approve to create the manager account, or Reject to delete the application.
+
+
+Managing Payouts
+1.	Open Payouts to see pending requests.
+2.	After sending the money by MoMo or bank transfer, click Mark as Paid.
+3.	To decline a request, click Reject and add a note. The manager is notified in both cases.
+
+
+Announcements
+•	Publish: enter a title and message; it appears on the homepage.
+•	Delete: remove outdated announcements.
+
+
+Managing Users
+1.	Open Users to see all accounts.
+2.	Suspend blocks a user from logging in (click again to reactivate).
+3.	Delete permanently removes accounts that have no bookings or hostels.
+
+
+Removing Hostels Admins may delete hostels that have no bookings. Hostels with active bookings are protected — suspend the manager instead.
+
+Exporting Data Use Export CSV to download booking records for audits and reporting.
+
+
+Fraud Prevention
+•	Verify suspicious receipts with the Verify Receipt tool.
+•	Suspend accounts involved in fraudulent activity.
+•	Monitor revenue figures on the dashboard for unusual patterns.
+
+
+TROUBLESHOOTING, FAQ & SUPPORT
+
+
+Common Problems & Fixes
+•	No OTP SMS arriving: wait 60 seconds and click Resend Code; check your network; confirm you entered the correct phone number.
+•	Payment made but booking still pending: return to the site using Paystack’s return link so verification completes. If unresolved, contact support with your payment reference.
+•	Forgotten password: use Forgot Password with your phone number and the SMS code.
+•	Receipt code shows “not found”: re-enter the code exactly as printed (8 characters, capital letters). If it still fails, the receipt may be fake — report it.
+•	Cannot log in: check that your account is not suspended and that Caps Lock is off.
+
+
+Frequently Asked Questions
+•	Does BrightAdel take commission from managers? No. Managers receive 100% of the hostel fee; students pay the GH₵20 platform fee + 2% gateway charge.
+•	When is my slot guaranteed? Once payment is verified and your booking shows Confirmed.
+•	Can a manager remove me from my room? No — checkout requires your approval.
+•	Can I review a hostel while staying in it? Reviews open only after checkout.
+
+
+Support
+•	Email: Rockselorm2003@gmail.com
+•	Phone / WhatsApp: 0547421221
+•	Always include your full name, phone number, and (for payments) your Paystack reference.
+
+
+Glossary
+•	OTP: one-time 6-digit SMS code.
+•	Slot: one bed space in a room.
+•	Receipt code: unique 8-character proof of a genuine payment.
+•	Payout: transfer of a manager’s earned funds.
+•	Checkout: final departure that frees a slot.
+
